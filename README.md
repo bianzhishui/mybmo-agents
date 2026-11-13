@@ -27,6 +27,7 @@
 |---|---|
 | [`docs/ec-shopping-workflow-v2.md`](docs/ec-shopping-workflow-v2.md) | 方案 v2 全文：结构修正、链路、接口路由、8 角色分工、产物存储规范、6 层审计清单、铁律 |
 | [`docs/dsh-multi-agent-v1.md`](docs/dsh-multi-agent-v1.md) | **DSH 多 Agent 实现方案**：9 个 Agent preset、团长派活机制、单一写入口的权限隔离、安装与验证、排期 |
+| [`docs/req-mybmo-mcp-readonly-endpoint.md`](docs/req-mybmo-mcp-readonly-endpoint.md) | **给 `mybmo-mcp` 的需求**：只读 MCP 入口（`/mcp/readonly`），把"只有成员8 能写"变成结构保证 |
 
 ## 执行环境（DSH）
 
