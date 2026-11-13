@@ -1,0 +1,515 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "addCampaignShopping.schema.json",
+  "title": "CampaignShoppingService.addCampaignShopping 请求体",
+  "description": "来源：mybmo-mcp 字段表 + 官方口径。addCampaignShopping 未实测，首单必须 pause=true 小范围验证。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "campaignShoppingTypes"
+  ],
+  "properties": {
+    "campaignShoppingTypes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/definitions/campaign"
+      }
+    }
+  },
+  "definitions": {
+    "campaign": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "campaignShoppingName",
+        "pause",
+        "targetType",
+        "eshopType",
+        "campaignType",
+        "budget",
+        "transType",
+        "ocpcBid",
+        "audience",
+        "ideaType",
+        "material"
+      ],
+      "properties": {
+        "campaignShoppingName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "pause": {
+          "const": true,
+          "description": "铁律：新建必须 true（灰度），开量由 ⑧-6 单独 update"
+        },
+        "targetType": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ],
+          "description": "1 商品 / 2 直播"
+        },
+        "eshopType": {
+          "type": "integer",
+          "enum": [
+            1,
+            4
+          ],
+          "description": "1 度小店 / 4 百度健康商城"
+        },
+        "productId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "targetType=1 必填；禁止编造"
+        },
+        "productName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anchorId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "targetType=2 必填"
+        },
+        "campaignType": {
+          "type": "integer",
+          "enum": [
+            1,
+            4
+          ],
+          "description": "1 控成本 / 4 放量（放量须 budget>0）"
+        },
+        "budget": {
+          "description": "0=不限；否则 [50, 9999999.99]",
+          "anyOf": [
+            {
+              "const": 0
+            },
+            {
+              "type": "number",
+              "minimum": 50,
+              "maximum": 9999999.99
+            }
+          ]
+        },
+        "ocpcBid": {
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 99999,
+          "multipleOf": 0.01
+        },
+        "transType": {
+          "type": "integer",
+          "enum": [
+            14,
+            90,
+            80,
+            81,
+            82,
+            83,
+            84
+          ],
+          "description": "度小店 [14,90] / 健康商城 [90] / 直播间 [80,81,82,83,84]"
+        },
+        "startTime": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "endTime": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "长期用 9999-01-01"
+        },
+        "schedule": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "weekDay",
+              "startHour",
+              "endHour"
+            ],
+            "properties": {
+              "weekDay": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 7
+              },
+              "startHour": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 23
+              },
+              "endHour": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 24
+              }
+            }
+          }
+        },
+        "audience": {
+          "$ref": "#/definitions/audience"
+        },
+        "ideaType": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ],
+          "description": "1 自定义 / 2 直播间实况"
+        },
+        "material": {
+          "$ref": "#/definitions/material"
+        },
+        "customMaterials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/material"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "targetType": {
+                "const": 1
+              }
+            },
+            "required": [
+              "targetType"
+            ]
+          },
+          "then": {
+            "required": [
+              "productId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "targetType": {
+                "const": 2
+              }
+            },
+            "required": [
+              "targetType"
+            ]
+          },
+          "then": {
+            "required": [
+              "anchorId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "campaignType": {
+                "const": 4
+              }
+            },
+            "required": [
+              "campaignType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "budget": {
+                "type": "number",
+                "minimum": 50,
+                "maximum": 9999999.99
+              }
+            }
+          }
+        }
+      ]
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brand",
+        "title"
+      ],
+      "description": "material 是整体替换；brand 为空则素材全空",
+      "properties": {
+        "brand": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 9,
+                "maxLength": 60
+              }
+            }
+          },
+          "description": "每条 9-60 字符"
+        },
+        "description": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 9,
+                "maxLength": 80
+              }
+            }
+          },
+          "description": "每条 9-80 字符；商品推广必传"
+        },
+        "pictures": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 18,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "imageId"
+            ],
+            "properties": {
+              "imageId": {
+                "description": "真实 imageId 或占位符 PENDING:<asset>（须由成员8 在 ⑧-2 后回填）",
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^PENDING:[a-z0-9._-]+$"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "videos": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "videoId"
+            ],
+            "properties": {
+              "videoId": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "fengchaoTitle": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 400
+              }
+            }
+          }
+        },
+        "userPortrait": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "imageId"
+          ],
+          "properties": {
+            "imageId": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "audience": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "扁平 Map；未知键在接口侧会被静默忽略，故此处白名单校验",
+      "properties": {
+        "sex": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "age": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "customAge": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "regionType": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "region": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "keywords": {
+          "type": "string",
+          "description": "意图词，逗号分隔，≤2000 个"
+        },
+        "keywordsExtend": {
+          "enum": [
+            "1",
+            "2",
+            1,
+            2
+          ],
+          "description": "1 全网 / 2 历史搜索"
+        },
+        "interests": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "crowd": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "etradecrowds": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "excludeCrowd": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "excludeTrans": {
+          "enum": [
+            "1",
+            "4",
+            1,
+            4
+          ],
+          "description": "1 同账户 / 4 同主体"
+        },
+        "fcKeywordWtpids": {
+          "type": "string",
+          "pattern": "^\\d+(,\\d+)*$",
+          "description": "关键词包 ID，逗号分隔（替换式语义）"
+        },
+        "intelligentWeight": {
+          "enum": [
+            "1",
+            "0",
+            1,
+            0
+          ],
+          "description": "1 用 / 0 不用 智能放量"
+        }
+      }
+    },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 400
+        }
+      }
+    }
+  }
+}

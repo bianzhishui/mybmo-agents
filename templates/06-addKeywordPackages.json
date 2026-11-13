@@ -1,0 +1,31 @@
+{
+  "keywordPackageTypes": [
+    {
+      "packageName": "品牌词-<商品>",
+      "keywordTypes": [
+        {
+          "keyword": "<关键词>",
+          "id": 0
+        }
+      ]
+    },
+    {
+      "packageName": "品类词-<商品>",
+      "keywordTypes": [
+        {
+          "keyword": "<关键词>",
+          "id": 0
+        }
+      ]
+    },
+    {
+      "packageName": "场景词-<商品>",
+      "keywordTypes": [
+        {
+          "keyword": "<人群/场景+品类>",
+          "id": 0
+        }
+      ]
+    }
+  ]
+}

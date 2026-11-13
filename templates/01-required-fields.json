@@ -1,0 +1,14 @@
+{
+  "_note": "A2 电商必填项核实表。任何字段为『待核实』都不得进入 ⑧ 实施。",
+  "targetType": 1,
+  "targetTypeMean": "1 商品 / 2 直播",
+  "eshopType": 1,
+  "eshopTypeMean": "1 度小店 / 4 百度健康商城",
+  "transType": 14,
+  "transTypeMean": "度小店[14,90] / 健康商城[90] / 直播间[80,81,82,83,84]",
+  "productId": "待核实",
+  "productName": "待核实",
+  "brand": "待核实",
+  "verifiedBy": "成员1",
+  "verifiedAt": "<ISO8601>"
+}

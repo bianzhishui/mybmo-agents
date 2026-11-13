@@ -39,6 +39,29 @@
 - `.ecwf/.gitignore` = `*` + `!.gitignore`（产物不入库）
 - token / 密钥不入盘；`call_id` 必落 `calls.jsonl` 以便回连 `mybmo-mcp` 的 `audit_log`
 
+## 自动校验（§5.6 的落地实现）
+
+`scripts/validate_payloads.py`——成员8 第 1 步预检用的只读校验器：
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install jsonschema   # 一次性
+.venv/bin/python scripts/validate_payloads.py                # 校验最新 run
+.venv/bin/python scripts/validate_payloads.py --run <runId>  # 指定 run
+.venv/bin/python scripts/validate_payloads.py --allow-missing --json   # 半成品/CI
+```
+
+它做三件事：
+
+1. **模板校验**：`06-payloads/{addKeywordPackages,uploadImage,addCampaignShopping}.json`
+   逐份对 `schemas/*.schema.json`（draft-07）校验；
+2. **占位符 / 编造校验**：出现具体整数 `imageId` 但 `04-assets/image-map.json`
+   查不到 → 判定编造，直接打回成员6；`PENDING:<file>` 视为待回填；
+3. **业务规则子集**：`pause=true` 铁律、意图词 ≤2000、标题 9-60 字符、
+   `material`/`brand` 非空、`03-copy` 禁投词自检结论。
+
+退出码 `0` 通过 / `1` 有 FAIL / `2` 环境错。只读，不改任何产物。
+
 ## 状态
 
-设计稿。`CampaignShoppingService.addCampaignShopping` 尚未实测，首单须以 `pause=true` 小范围验证。
+设计稿 + 校验器可用。`CampaignShoppingService.addCampaignShopping` 尚未实测，
+首单须 1 计划 / 1 词包 / 1 图、`pause=true`、回读通过再放量。

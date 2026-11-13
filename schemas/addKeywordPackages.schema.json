@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "addKeywordPackages.schema.json",
+  "title": "KeyWordShoppingService.addKeywordPackages 请求体",
+  "description": "来源：mybmo-mcp 能力实测（2026-11-11）。字段名 keywordPackageTypes，驼峰。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "keywordPackageTypes"
+  ],
+  "properties": {
+    "keywordPackageTypes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "packageName"
+        ],
+        "properties": {
+          "packageName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "packageId": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "复制模式：源包 ID（与 keywordTypes 二选一）"
+          },
+          "keywordTypes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2000,
+            "description": "新建/整组替换的关键词集合",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "keyword"
+              ],
+              "properties": {
+                "keyword": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "id": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 0,
+                  "description": "新建时填 0"
+                }
+              }
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "keywordTypes"
+            ]
+          },
+          {
+            "required": [
+              "packageId"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

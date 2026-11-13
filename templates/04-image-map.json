@@ -1,0 +1,15 @@
+{
+  "_note": "A6 映射表。imageId 由成员8 在 ⑧-2 上传后回填；此处为空即为未上传。",
+  "assets": [
+    {
+      "file": "img-001.png",
+      "base64File": "img-001.b64",
+      "imageName": "<商品名-主图1>",
+      "usedIn": [
+        "title#1"
+      ],
+      "imageId": null,
+      "md5": null
+    }
+  ]
+}

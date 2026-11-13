@@ -1,0 +1,50 @@
+{
+  "campaignShoppingTypes": [
+    {
+      "campaignShoppingName": "<商品>-<策略>-<YYYYMMDD>",
+      "pause": true,
+      "targetType": 1,
+      "eshopType": 1,
+      "productId": "待核实",
+      "productName": "待核实",
+      "campaignType": 1,
+      "budget": 0,
+      "transType": 14,
+      "ocpcBid": 0.2,
+      "startTime": "<YYYY-MM-DD>",
+      "endTime": "9999-01-01",
+      "schedule": [
+        {
+          "weekDay": 1,
+          "startHour": 0,
+          "endHour": 24
+        }
+      ],
+      "audience": {
+        "region": "9999999",
+        "fcKeywordWtpids": "<成员2词包ID>",
+        "keywordsExtend": "1",
+        "intelligentWeight": "1"
+      },
+      "ideaType": 1,
+      "material": {
+        "brand": "待核实",
+        "title": [
+          {
+            "text": "<9-60字符>"
+          }
+        ],
+        "description": [
+          {
+            "text": "<9-80字符>"
+          }
+        ],
+        "pictures": [
+          {
+            "imageId": "PENDING:img-001"
+          }
+        ]
+      }
+    }
+  ]
+}

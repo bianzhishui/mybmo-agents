@@ -1,0 +1,46 @@
+{
+  "runId": "<YYYYMMDD-HHMMSS>-<slug>",
+  "dshSessionId": "<DSH_SESSION_ID>",
+  "account": "<account-alias>",
+  "createdAt": "<ISO8601>",
+  "stages": {
+    "01-product": {
+      "status": "pending"
+    },
+    "02-keywords": {
+      "status": "pending"
+    },
+    "03-copy": {
+      "status": "pending"
+    },
+    "04-assets": {
+      "status": "pending"
+    },
+    "05-plan": {
+      "status": "pending"
+    },
+    "06-payloads": {
+      "status": "pending"
+    },
+    "07-audit": {
+      "status": "pending"
+    },
+    "08-execution": {
+      "status": "pending"
+    }
+  },
+  "objects": {
+    "imageIds": [],
+    "packageIds": [],
+    "campaignShoppingId": null
+  },
+  "finalStatus": "running",
+  "_statusEnum": [
+    "pending",
+    "running",
+    "done",
+    "rejected",
+    "frozen"
+  ],
+  "_note": "rejected 必须带 reason 与 retryTo"
+}
