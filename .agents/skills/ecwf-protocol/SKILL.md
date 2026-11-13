@@ -102,9 +102,12 @@ runDir: .ecwf/runs/<runId>
 
 调用纪律：
 
-0. **判定结果看 `ok` 字段，不要看 `isError`**。服务端被拒时返回的是结构化信封
-   （`ok:false` + `error.code/message/hint/capability/mutating/endpoint`），`isError` 仍是 `false`。
-   被拒调用会落 `audit_log`，`state = "denied"`——这是"有人试图越权"的唯一证据。
+0. **判定结果看 `ok` 字段，不要看 `isError`**。服务端被拒时返回结构化信封：
+   `{ok:false, error:{code, message, hint, capability, mutating, endpoint}}`，`isError` 仍是 `false`。
+   被拒调用会落 `audit_log`（`state="denied"`，`request_bytes` 极小、`response_bytes=0`——
+   即一个字节都没发到百度），这是"有人试图越权"的唯一证据。
+   `mutating=unknown` 的能力在只读入口一律被拒，全表只剩 `PreAuditService.materialPreAudit`（sms 线，
+   不在电商范围）：**电商线不要用它**；万一真需要，找 `mybmo-mcp` 把它标成 `false`，不要在入口开洞。
 1. 调之前先看 `mutating`。不确定按**写**处理（`unknown` 默认当写）。
 2. 成员1-7 命中写能力 = **违规**，团长必须判该产物无效并重派。
 3. 只有成员8 的写调用要留 `call_id`（`08-execution/calls.jsonl`）——这是回滚与事后还原的唯一线索；只读调用不必落流水，但要能把"数据从哪来"说清（如成员2 记在 `02-keywords/_notes.json`）。

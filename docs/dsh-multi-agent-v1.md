@@ -159,6 +159,8 @@
 
 | 项 | 结论 |
 |---|---|
+| 上游权威文档 | `mybmo-mcp`: `docs/decisions/0011-readonly-endpoint.md`（ADR 0011）+ `openspec/changes/archive/2026-11-13-readonly-endpoint/`（proposal / design / tasks / reply） |
+| 入口 ↔ serverName | `/mcp/readonly` → `mybmo_read`（`mcp__mybmo_read__*`）；`/mcp` → `mybmo_exec`（`mcp__mybmo_exec__*`）；client_id 均为 `709a8e16656a223a1ab7` |
 | 形态 | 同端口独立路由 `/mcp/readonly`（第二个 `MCPServer` 实例）；反代不用改 |
 | 鉴权 | 同一套 OAuth/tenancy，**不需要新身份**；两个入口**各自授权一次**（`mcp-remote` 缓存键含 URL），同机全员复用 |
 | 被拒表现 | 结构化信封 `ok:false` + `error.{message,hint,capability,mutating,endpoint}`，**`isError` 仍为 false** → 判定看 `ok` |
@@ -167,6 +169,7 @@
 | `mutating=unknown` | 一律拒；全表仅 `PreAuditService.materialPreAudit` 一条（sms 线，不在电商范围） |
 | `query_audit` | 保持原语义（已按用户隔离），不在只读入口再收窄 |
 | 无 `bind_account` | 接受：`needs_reauth: true` 只能人工重绑（走全量入口或后台）——**已写进值班流程** |
+| 已知上游缺陷（已修） | ① 只读入口初期"任何令牌都 401"（装配漏搬鉴权 middleware）；② 账户令牌过期一次后**永久失效**（刷新时提前关闭 HTTP 客户端）→ 现已自动刷新自愈，实测 `expires_at` 自动续期约 26.5h |
 
 ### 5.3.1 过渡状态与收尾
 
