@@ -86,6 +86,21 @@ def disp_width(text: str) -> int:
     return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in text)
 
 
+def pick_latest(payload_dir: Path, base: str) -> Path | None:
+    """同名文件取最高版本：`x.json` < `x.v2.json` < `x.v3.json`（冻结不改写的产物用 .vN 落盘）。"""
+    stem = base[: -len(".json")]
+    versioned = re.compile(rf"^{re.escape(stem)}(?:\.v(\d+))?\.json$")
+    best: tuple[int, Path] | None = None
+    for p in payload_dir.glob(f"{stem}*.json"):
+        m = versioned.match(p.name)
+        if m is None:
+            continue
+        version = int(m.group(1) or 1)
+        if best is None or version > best[0]:
+            best = (version, p)
+    return best[1] if best else None
+
+
 def resolve_run_dir(args: argparse.Namespace) -> Path:
     if args.run_dir:
         return Path(args.run_dir).expanduser().resolve()
@@ -306,8 +321,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payloads: dict[str, Any] = {}
     for base, _schema in PAYLOAD_SCHEMAS.items():
-        candidates = [payload_dir / base, payload_dir / f"06-{base}"]
-        path = next((p for p in candidates if p.is_file()), None)
+        path = pick_latest(payload_dir, base)
         if path is None:
             (report.warn if args.allow_missing else report.fail)(
                 f"payload/{base}", f"{payload_dir} 下缺该文件"
