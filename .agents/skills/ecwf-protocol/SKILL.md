@@ -111,6 +111,17 @@ runDir: .ecwf/runs/<runId>
 
 八个脚本都已实测可用；`validate_payloads.py` / `backfill_image_ids.py` 需要 `jsonschema`（`.venv`）。
 
+## 7.1 预检的授权判据（`auth_status` 返回的是账户数组）
+
+```
+调 auth_status → data 是数组，逐账户判：
+  usable === true 且 needs_reauth === false    → 可实施
+  任一账户 usable === false 或 needs_reauth === true → 停手，请用户重新授权
+调不通 auth_status 时退化用 list_accounts（字段等价：status/usable/expires_at）
+```
+
+不要只看 `expires_at` 是否已过——服务端会自动续期，以 `needs_reauth` 为准。
+
 ## 8. 十条铁律（摘要，全文见方案 §八）
 
 1. 层级：电商线只有「计划」一层；"单元" = 计划内定向组（1:1）。
