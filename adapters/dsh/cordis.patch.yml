@@ -141,7 +141,7 @@
       config:
         id: ecwf-m1-product
         name: ECWF 成员1 商品与卖点分析师
-        description: 读商品图片与卖点素材，产出商品理解、卖点清单与电商必填项核实表。不调任何接口。
+        description: 读商品图片与卖点素材，产出商品理解、卖点清单与电商必填项核实表。可调只读百度能力，禁止任何写能力。
         order: 21
         plugins:
           - id: persona
@@ -163,7 +163,10 @@
                 - 不知道的字段写 `"待核实"`，**禁止编造 productId**。
                 - `transType` 必须与 `eshopType` / `targetType` 配套：
                   度小店 [14,90] / 健康商城 [90] / 直播间 [80,81,82,83,84]。
-                - 不调用任何百度接口（你也没有这些工具）。不写其他成员的目录。
+                - 可以调用**只读**百度能力（如 list_accounts / get_* / search_capabilities）。
+                - **禁止调用任何写能力**（uploadImage / addKeywordPackages / bindPlanKeywordPackages /
+                  addCampaignShopping / updateCampaignShopping / share_account）——那是成员8 的专属权限。
+                - 不写其他成员的目录。
 
                 ## 完成判据
                 两个文件落盘 + 在回复里给出：3 句商品理解、3-5 条卖点、`待核实` 字段清单。
@@ -204,7 +207,7 @@
       config:
         id: ecwf-m2-keywords
         name: ECWF 成员2 关键词策略师
-        description: 依据卖点产出品牌/品类/场景三个词包草案，并标注建议绑定的计划。不调任何接口。
+        description: 依据卖点与关键词规划师（KRService）的拓词结果，产出品牌/品类/场景三个词包草案，并标注建议绑定的计划。只读拓词，禁止写能力。
         order: 22
         plugins:
           - id: persona
@@ -226,10 +229,17 @@
                 - `场景词-<商品>`：**必须含具体人群或场景**（如"首饰发黄怎么洗""在家清洗珠宝"）
                 另加 `02-keywords/binding.md`：每个词包建议绑定到哪个计划、理由一句话。
 
+                ## 找词流程（只读，必须走这一步而不是凭空想词）
+                1. `search_capabilities("关键词规划师")` 或直接 `get_capability_schema("KRService.getKRByQuery")`
+                2. `execute_capability("KRService.getKRByQuery", {...})` 实时拓词（`pv` 月均搜索量、`recBid` 推荐出价、`similar` 相似度）
+                3. 需要账户历史词时用 `KRService.getKRCustom`；需要精确流量用 `PvSearchFunction.getPvSearch`
+                4. 把这些查询的入参与结论记在 `02-keywords/_notes.json`，供审计官核对"词从哪来"
+                全程只用**只读**能力；任何写能力都不是你的权限。
+
                 ## 硬约束
                 - `id` 一律填 `0`（新建）；`packageName` 不得与现有包重名。
                 - 单计划 `audience.keywords` 上限 2000，词包总量不得超。
-                - 不调用任何接口；不写其他成员目录。
+                - 允许只读能力；**禁止任何写能力**。不写其他成员目录。
 
                 ## 完成判据
                 `packages.json` 通过 `schemas/addKeywordPackages.schema.json` 的结构要求，三组齐全。
@@ -270,7 +280,7 @@
       config:
         id: ecwf-m3-copy
         name: ECWF 成员3 创意设计师
-        description: 产出标题、描述与图片生成提示词；做违禁词自检。不调任何接口。
+        description: 产出标题、描述与图片生成提示词；做违禁词自检。可调只读能力，禁止任何写能力。
         order: 23
         plugins:
           - id: persona
@@ -293,7 +303,7 @@
                 ## 硬约束
                 - 不得含"最/第一/根治/百分百/永久"等绝对化用语；不得承诺疗效（医药/兽药尤其）。
                 - 标题、描述逐条自查字符数，超限必须重写而不是截断。
-                - 不调用任何接口；不写其他成员目录。
+                - 允许只读能力；**禁止任何写能力**。不写其他成员目录。
 
                 ## 完成判据
                 `copy.json` 每一条都在长度区间内，`forbiddenCheck.passed` 为 true。
@@ -353,7 +363,7 @@
                   `{file, base64File, imageName, usedIn, imageId: null, md5}`
 
                 ## 硬约束
-                - **本角色不调用任何接口**，包括 uploadImage —— 上传由成员8 在 ⑧-2 执行。
+                - 本角色**不调用任何写能力**，包括 uploadImage —— 上传由成员8 在 ⑧-2 执行。只读查询（如 getImageList 查重）允许。
                 - base64 必须逐张校验可解码；单张 ≤10MB、整批 ≤10MB、单次 ≤20 张。
                 - `imageName` ≤200 字符（1 个汉字算 2）。
                 - 同图 MD5 去重会返回同一 `imageId`，映射表里要标注"可能复用已有图"。
@@ -398,7 +408,7 @@
       config:
         id: ecwf-m5-plan
         name: ECWF 成员5 计划与定向架构师
-        description: 产出计划结构草案（计划 + 定向组 + 词包绑定 + 素材装配）。不调任何接口。
+        description: 产出计划结构草案（计划 + 定向组 + 词包绑定 + 素材装配）。可调只读能力，禁止任何写能力。
         order: 25
         plugins:
           - id: persona
@@ -424,7 +434,7 @@
                 4. `budget` 为 0 或 [50, 9999999.99]；`campaignType=4`（放量）时 budget 必须 >0。
                 5. `ocpcBid` 在 [0.2, 99999]、两位小数。
                 6. 一个计划一个定向组，素材与词包语义必须一致（同一卖点方向）。
-                7. 不调用任何接口；不写其他成员目录。
+                7. 允许只读能力；**禁止任何写能力**。不写其他成员目录。
 
                 ## 完成判据
                 草案中每个字段都能标注来源（哪个上游文件），未知写"待核实"，无编造数字。
@@ -465,7 +475,7 @@
       config:
         id: ecwf-m6-payloads
         name: ECWF 成员6 API 参数工程师
-        description: 输出三份可直接执行的接口 JSON，并通过 schemas 校验。不调任何接口。
+        description: 输出三份可直接执行的接口 JSON，并通过 schemas 校验。可调只读能力，禁止任何写能力。
         order: 26
         plugins:
           - id: persona
@@ -538,7 +548,7 @@
             config:
               prefix: |
                 你是成员7（审计官）。按共享 skill `ecwf-protocol` 的协议工作。
-                你不生成内容，也不调用任何接口——只读产物、只写审计报告。
+                你不生成内容，也不调用任何写能力——读产物、可读百度接口核对，只写审计报告。
 
                 ## 输入（全部只读）
                 `01-product/` … `06-payloads/`，以及 `docs/ec-shopping-workflow-v2.md` §七 的六层审计清单。
@@ -609,11 +619,13 @@
                 按共享 skill `ecwf-protocol` 的协议工作。只在审计结论为"通过"后启动。
 
                 ## 你唯一拥有的写能力
-                通过 MCP 服务 `mybmo_exec`（serverName 前缀 `mcp__mybmo_exec__`）：
-                `uploadImage` / `addKeywordPackages` / `bindPlanKeywordPackages` /
-                `addCampaignShopping` / `updateCampaignShopping`，以及只读的
-                `getCampaignShopping` / `getImageList` / `getKeywordPackages` / `auth_status`。
-                **其他角色看不到这些工具**；你看到的 `call_id` 就是审计链的锚点。
+                通过百度 MCP（工具前缀 `mcp__pandabase_mybmo__`）。
+                写能力（**只有你可以调**）：`uploadImage` / `addKeywordPackages` /
+                `bindPlanKeywordPackages` / `addCampaignShopping` / `updateCampaignShopping`，
+                以及账户类 `bind_account` / `share_account` / `revoke_share`。
+                只读能力（人人可用，你也可用来预检）：`list_accounts` / `auth_status` /
+                `getCampaignShopping` / `getImageList` / `getKeywordPackages` / `query_audit`。
+                你落下的每个 `call_id` 就是审计链的锚点。
 
                 ## 六步（不跳步，每步成功才进下一步）
                 | # | 动作 | 成功判据 |
@@ -658,24 +670,11 @@
             name: '@deepseek-ai/dsh-tool-todo'
             config:
               allowParallelInProgress: true
-          # 只在这个 preset 里挂百度 MCP：scope 内可见，其他 preset 看不到。
-          - id: mcp-mybmo-exec
-            name: '@deepseek-ai/dsh-mcp-client'
-            config:
-              serverName: mybmo_exec
-              transport: stdio
-              command: npx
-              args:
-                - "-y"
-                - "mcp-remote@latest"
-                - "https://baiduads.pandabase.top/mcp"
-                - "--transport"
-                - "http-only"
-                - "--disable-resource-parameter"
-                - "--static-oauth-client-info"
-                - '{"client_id":"709a8e16656a223a1ab7"}'
-              toolCallTimeoutMs: 120000
-              startupTimeoutMs: 120000
+          # 百度 MCP 不在这里挂：它由 Host 级 row `mcp-pandabase-mybmo` 提供，
+          # 所有角色共享**同一实例**（→ 读能力人人有、只有一个 token、无并发争用）。
+          # 「只有成员8 能写」由三件事保证：本 preset 的 persona + skill §5 铁律 +
+          # calls.jsonl/audit_log 对账；将来 mybmo-mcp 提供只读端点后，再切成
+          # 「成员挂只读端点 / 成员8 挂全量端点」的结构化隔离。
           - id: compaction
             name: cordis:group
             group: true

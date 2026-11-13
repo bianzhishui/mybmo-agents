@@ -20,7 +20,7 @@
 │ 协议层  skill ecwf-protocol (.agents/skills/)                │
 │         交接契约 / manifest 状态机 / 六步顺序 / 审计与打回     │
 ├─────────────────────────────────────────────────────────────┤
-│ 能力层  MCP mybmo_exec（只挂成员8）+ 项目 scripts/            │
+│ 能力层  百度 MCP（Host 级共享：读人人有 / 写只成员8）+ scripts/ │
 │         百度接口 / schema 校验 / 产物落盘                     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -127,42 +127,54 @@
 | **preset 贡献的是 scoped tools**（"Preset plugins contribute scoped tools, persona, prompt sections, and policies to those registries"） | `compositions.md` §Choose plugin placement |
 | "server 属于单个 preset 而非整个 Host 时，用 plain `mcp-client` 行" | `dsh-mcp-manager/README.md` §When to choose it |
 
-### 5.2 采用方案：MCP 只挂成员8
+### 5.2 采用方案：共享一个实例，按"读/写"划边界
 
-不在团长/成员1-7 的 plugin list 里出现 `dsh-mcp-client`，只在 `ecwf-m8-exec` 里挂一行：
+角色**共用同一个**百度 MCP 实例（Host 级 row `mcp-pandabase-mybmo`，工具前缀 `mcp__pandabase_mybmo__*`）。
+好处是只有一份连接、一份 token、没有并发争用；代价是"谁都能看到写工具"，所以边界必须画在**能力类别**上：
 
-```yaml
-- id: mcp-mybmo-exec
-  name: '@deepseek-ai/dsh-mcp-client'
-  config:
-    serverName: mybmo_exec      # 与 Host 级 pandabase_mybmo 不同名，避免工具名冲突
-    transport: stdio
-    command: npx
-    args: ['-y','mcp-remote@latest','https://baiduads.pandabase.top/mcp',
-           '--transport','http-only','--disable-resource-parameter',
-           '--static-oauth-client-info','{"client_id":"709a8e16656a223a1ab7"}']
-    toolCallTimeoutMs: 120000
-    startupTimeoutMs: 120000
+| 类别 | 谁可以 | 判据 |
+|---|---|---|
+| 只读（`mutating: false`） | **所有角色** | `KRService.*`、`PvSearchFunction.getPvSearch`、`getCampaignShopping`、`getImageList`、`getKeywordPackages`、`list_accounts`、`query_audit`、`search_capabilities`… |
+| 写（`mutating: true` / `unknown`） | **只有成员8** | `uploadImage` / `addKeywordPackages` / `bindPlanKeywordPackages` / `addCampaignShopping` / `updateCampaignShopping` / `bind_account` / `share_account` / `revoke_share` |
+
+三层保证：
+
+1. **persona**：成员1-7 的 preset 明写"允许只读、禁止任何写能力"；成员8 明写"你是唯一写入口"。
+2. **协议**：skill §5 规定"调之前先看 `mutating`，`unknown` 按写处理"，审计清单第 5 层核对"是否出现非成员8 的写调用"。
+3. **对账**：`08-execution/calls.jsonl` 里的每个 `call_id` 必须能回连 `audit_log`，且执行者只有成员8；一旦出现第二个执行者，审计链立刻可见。
+
+> **为什么成员2 必须有读**：它的产出不是"拍脑袋关键词"，而是 `KRService.getKRByQuery` 的实时拓词结果
+> （`pv` 月均搜索量 / `recBid` 推荐出价 / `similar` 相似度）。没有读能力，词包质量无从保证。
+> 找词只读、不写，所以与"单一写入口"不冲突。
+
+### 5.3 加固路径：只读端点（尚未具备）
+
+现状的写边界是**协议级**，不是**结构级**——因为 `dsh-mcp-client` 没有工具白名单、`dsh-agent-preset` 没有 `toolFilter`
+（都已核实），DSH 侧无法让某个 agent 只看到只读工具。
+
+要变成结构级，只有一条路：**在 `mybmo-mcp` 侧增加只读表面**（复用能力表里的 `mutating` 标记，只注册 `mutating == "false"` 的能力）。
+落地后本方案只需改两处配置：
+
+```
+成员1-7 preset  → mcp-client 指向只读端点（serverName: mybmo_read）
+成员8  preset   → mcp-client 指向全量端点（serverName: mybmo_exec）
+Host 级共享行    → 下线
 ```
 
-于是：成员8 看到 `mcp__mybmo_exec__*`；其他 8 个角色**一个百度工具都看不到**。"单一写入口"从纪律变成结构。
+届时"成员物理上没有写工具"，§5.2 的三层保证就退化为兜底而不是主力。
 
-**代价**：团长与审计官也读不到百度接口。这是可接受的——审计官本来就"只读产物、不调接口"（方案 §四 成员7）；团长需要的读能力（授权状态、现有计划）由成员8 在执行前回读并落 `08-execution/preflight.json`。
+### 5.3.1 采用前的过渡状态（当前）
 
-### 5.3 灰度切换（可分两步，随时回滚）
+- Host 级 `mcp-pandabase-mybmo` 保持挂载 → 所有角色都能读；
+- 成员8 的 preset **不再单独挂** `mcp-client`（避免两个实例抢同一 token/回调端口；实测第二实例虽能调通但没必要）；
+- 写操作靠 persona + skill §5 + `calls.jsonl` 对账约束。
 
-| 步 | 动作 | 回滚 |
-|---|---|---|
-| 1 | 装 bundle（此时 Host 级 `pandabase_mybmo` 仍在，1-7 暂时还能看到写工具，属过渡态） | `remove_bundle` |
-| 2 | 验证成员8 能看到 `mybmo_exec` 且团长看不到 → 把 profile 里 `mcp-pandabase-mybmo` 那行注释掉 | 取消注释即可 |
-
-**不要跳过第 2 步**，否则隔离只是"多了一个入口"，不是"只剩一个入口"。
 
 ### 5.4 待实测
 
 - [x] **preset 作用域内的 `dsh-mcp-client`（stdio + npx mcp-remote + oauth）能连上** —— 已用等效组合实测：`Proxy established successfully between local STDIO and remote StreamableHTTPClientTransport`，`tools/list` 返回正常。
 - [ ] oauth 令牌缓存在 preset 作用域下是否与 Host 级共用（若共用，`--static-oauth-client-info` 的登录态可复用；若隔离，成员8 需要单独走一次授权）。
-- [ ] 两个 `dsh-mcp-client` 同时存在但 `serverName` 不同（`pandabase_mybmo` vs `mybmo_exec`）时，工具名是否会撞（预期不会，前缀不同）。
+- [x] 两实例共存的取舍已实测：第二个 `mcp-remote` 实例能连、能调只读能力（`list_accounts` / `search_capabilities` 均成功），故并存可行但**不再需要**——已改为共享单实例。
 
 ### 5.5 排错记录：首次安装 9 个 preset 全部"加载失败"
 
@@ -230,10 +242,10 @@ plugin_manager { action: install_bundle, target: "/Users/…/mybmo-agents/adapte
 | 2 | `plugin_manager list_plugins` | 出现 9 行 `preset-ecwf-*`，`enabled: true`，无诊断 | ✅ 9 行全部 `fiberPhase: active`，无 diagnostic |
 | 3 | 新建会话选 `ECWF 团长` | 系统提示里出现团长 persona | ✅ 已实测（卡片可选中） |
 | 4 | 团长会话里派一个 m2 | `agent_preset` 枚举可用；子 agent 以 `ecwf-m2-keywords` 身份落盘 | ✅ 已实测：子会话日志 `agentPreset: "ecwf-m2-keywords"`，产出 `02-keywords/{packages.json,binding.md,notes.json}`，`packages.json` 过 schema 校验（3 组 / 32 词），manifest 自动置 `02-keywords=done` |
-| 5 | 团长会话里搜百度工具 | **看不到** `mcp__mybmo_exec__*` | ⏳ 需新会话；**注意**：`Host` 级 `pandabase_mybmo` 此时仍挂着，所以团长暂时**看得到**它——过渡态，见 5.3 步 2 |
+| 5 | 团长会话里搜百度工具 | **能读**（`search_capabilities` / `get_*` 可用），但**一律不调写** | ⏳ 需新会话；写边界由 persona + skill §5 保证，见 5.2 |
 | 6 | 成员8 会话里搜百度工具 | **看得到** `mcp__mybmo_exec__*`，且工具真能调通 | ✅ 已实测：子会话 `agentPreset: "ecwf-m8-exec"`，看到 10 个 `mcp__mybmo_exec__*` 工具，`list_accounts` 返回成功（身份 test01 / 账户 `baidu-YF电商-玛卡快消01`）。**`auth_status` 亦然**（当日曾在服务端抛错，服务端修好后 DSH 侧仍报 outputSchema 不匹配——那是 MCP 客户端缓存了旧工具定义，**重启 Desktop 即恢复**；复核实测返回 `usable: true / needs_reauth: false`） |
 | 7 | 成员8 跑 `validate_payloads.py` | 与本地一致（0/1/2 退出码） | ✅ 已实测：输出与本地一致（空的 smoke run → `FAIL 3 / WARN 2`，`EXIT_CODE=1`） |
-| 8 | 关闭 profile 里 Host 级 `mcp-pandabase-mybmo` | 团长仍看不到，成员8 仍看得到 | ⬜ 等 6 通过再做 |
+| 8 | ~~关闭 Host 级 MCP~~ | **已取消**：设计改为共享单实例（读人人有/写只成员8），结构性隔离需等 `mybmo-mcp` 只读端点，见 5.3 | ✅ 决定变更 |
 
 **已有会话和它们的子 agent 会保留启动时的插件版本** —— 装完必须新开会话验证，旧会话不会热更新。
 

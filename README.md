@@ -38,7 +38,7 @@
 | skill `ecwf-protocol` | `.agents/skills/ecwf-protocol/` | 共享协议：目录所有权、交接契约、六步顺序、审计与打回 |
 
 - 安装：`plugin_manager { action: install_bundle, target: <abs>/adapters/dsh }`
-- 百度 MCP 只挂在 **成员8** 的 preset 里，其余 8 个角色看不到任何百度工具 → 单一写入口是结构性的，不是纪律。
+- 百度 MCP 由 Host 级 row 共享一个实例：**读能力人人可用**（成员2 要靠 `KRService` 拓词），**写能力只有成员8**——由 persona + `ecwf-protocol` §5 铁律 + `calls.jsonl` 对账三层保证。
 - skill 由 `dsh-skill-filesystem` 从项目根自动发现，改文件即生效，无需重启。
 
 ## 执行工作区约定（摘要）

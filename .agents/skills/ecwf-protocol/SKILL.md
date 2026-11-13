@@ -83,13 +83,37 @@ runDir: .ecwf/runs/<runId>
 - **⑤–⑧ 必须串行**：⑤ 依赖 ①-④，⑥ 依赖 ⑤，⑦ 依赖 ⑥，⑧ 依赖 ⑦ 结论为"通过"。
 - 进入 ⑧ 后顺序也不可换：`imageId`（⑧-2）先于建计划（⑧-4）；`packageId`（⑧-3）先于绑包（⑧-5）。
 
-## 5. 单一写入口
+## 5. 读写分离：读人人有，写只有一个入口
 
-**只有成员8 能调用任何 `mutating` 的百度能力。** 成员1-7 只产出"待执行参数"，自己不执行，也看不到写工具。
+角色共用**同一个**百度 MCP 实例（Host 级 `mcp-pandabase-mybmo`，工具前缀 `mcp__pandabase_mybmo__*`）。
+所以边界不在"能不能看到工具"，而在**谁允许调哪一类**：
 
-- 每次写调用必须留 `call_id`（`08-execution/calls.jsonl`），这是回滚与事后还原的唯一线索。
-- 改前必须落 `08-execution/before-snapshot.json`；`material` 是整体替换，`fengchaoTitle` 读不回。
-- **未通过 ⑧-6 回读校验，不得声称"已实施"。**
+| 类别 | 谁可以 | 怎么判 |
+|---|---|---|
+| **只读**（`mutating: false`） | **所有角色**（含团长、审计官） | `search_capabilities` 返回里 `mutating` 为 `false`；典型：`KRService.*`、`PvSearchFunction.getPvSearch`、`getCampaignShopping`、`getImageList`、`getKeywordPackages`、`list_accounts`、`query_audit` |
+| **写**（`mutating: true` / `unknown`） | **只有成员8** | `uploadImage` / `addKeywordPackages` / `bindPlanKeywordPackages` / `addCampaignShopping` / `updateCampaignShopping`，以及账户类 `bind_account` / `share_account` / `revoke_share` |
+
+调用纪律：
+
+1. 调之前先看 `mutating`。不确定按**写**处理（`unknown` 默认当写）。
+2. 成员1-7 命中写能力 = **违规**，团长必须判该产物无效并重派。
+3. 只有成员8 的写调用要留 `call_id`（`08-execution/calls.jsonl`）——这是回滚与事后还原的唯一线索；只读调用不必落流水，但要能把"数据从哪来"说清（如成员2 记在 `02-keywords/_notes.json`）。
+4. 改前必须落 `08-execution/before-snapshot.json`；`material` 是整体替换，`fengchaoTitle` 读不回。
+5. **未通过 ⑧-6 回读校验，不得声称"已实施"。**
+
+> 已知限制：`dsh-mcp-client` 没有工具白名单，所以"成员看不到写工具"在 DSH 侧做不到。
+> 现在的写边界靠 **persona + 本节 + 审计对账**；等 `mybmo-mcp` 提供只读端点后，再切成
+> 「成员挂只读端点 / 成员8 挂全量端点」的结构化隔离，届时本节第 1-3 条自然由结构保证。
+
+## 5.1 成员2 的找词（只读，必走）
+
+```
+search_capabilities("关键词规划师")  →  get_capability_schema("KRService.getKRByQuery")
+execute_capability("KRService.getKRByQuery", {query:…, seedFilter:{…}})   # pv / recBid / similar
+KRService.getKRCustom      # 账户历史推词
+PvSearchFunction.getPvSearch  # 精确/短语流量
+```
+结论写进 `02-keywords/packages.json`，**查询入参与依据写进 `02-keywords/_notes.json`**，让审计官能核对"词从哪来"。
 
 ## 6. 审计与打回
 
@@ -126,10 +150,10 @@ runDir: .ecwf/runs/<runId>
 
 1. 层级：电商线只有「计划」一层；"单元" = 计划内定向组（1:1）。
 2. 接口：只用 `KeyWordShoppingService` / `ImageManageService` / `CampaignShoppingService`。
-3. 单一写入口：写能力只有成员8。
+3. 读写分离：只读能力人人可用，**写能力只有成员8**。
 4. 词包：先成包再绑计划，绑定是**替换式**。
 5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。
-6. 图片：必须先 `uploadImage(addImage=true)` 拿真实 `imageId`；连接器无生成能力。
+6. 图片：必须先 `uploadImage(addImage=true)` 拿真实 `imageId`（由成员8 执行）；连接器无生成能力。
 7. 顺序：`imageId` 先于建计划、`packageId` 先于绑包。
 8. 实施：`addCampaignShopping` 未实测，首单 1 计划 / 1 词包 / 1 图、`pause=true`。
 9. 不编造：`productId` / `imageId` / 落地页一律不得编造，缺就写"待核实"。

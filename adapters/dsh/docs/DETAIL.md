@@ -14,7 +14,7 @@
 | `ecwf-m5-plan` | 成员5 计划与定向架构师 | `05-plan/` | 否 |
 | `ecwf-m6-payloads` | 成员6 API 参数工程师 | `06-payloads/` | 否 |
 | `ecwf-m7-audit` | 成员7 审计官 | `07-audit/` | 否 |
-| `ecwf-m8-exec` | 成员8 实施操作员 | `08-execution/` | **是（唯一）** |
+| `ecwf-m8-exec` | 成员8 实施操作员 | `08-execution/` | **写：仅此角色**（读：全角色） |
 
 ## 怎么用
 
@@ -25,7 +25,7 @@
 
 ## 关键限制
 
-- 百度 MCP（`mybmo_exec`）**只挂在 `ecwf-m8-exec` 里**：其他 8 个角色看不到任何百度工具。
+- 百度 MCP 由 Host 级 row 共享：**只读能力所有角色都能用**（成员2 用关键词规划师拓词），**写能力只有成员8**。写边界目前靠 persona + 协议 + `calls.jsonl` 对账保证；结构性隔离要等 `mybmo-mcp` 提供只读端点。
 - 写操作全部串行、全部留 `call_id`；未通过回读校验不算"已实施"。
 - `CampaignShoppingService.addCampaignShopping` **从未在线上实测**，首单必须 1 计划 / 1 词包 / 1 图灰度。
 - 连接器没有文生图能力，图片必须外部出图后 base64 入库。
