@@ -170,11 +170,11 @@ Host 级共享行    → 下线
 - 写操作靠 persona + skill §5 + `calls.jsonl` 对账约束。
 
 
-### 5.4 待实测
+### 5.4 实测记录（原"待实测"项，已全部收敛）
 
-- [x] **preset 作用域内的 `dsh-mcp-client`（stdio + npx mcp-remote + oauth）能连上** —— 已用等效组合实测：`Proxy established successfully between local STDIO and remote StreamableHTTPClientTransport`，`tools/list` 返回正常。
-- [ ] oauth 令牌缓存在 preset 作用域下是否与 Host 级共用（若共用，`--static-oauth-client-info` 的登录态可复用；若隔离，成员8 需要单独走一次授权）。
-- [x] 两实例共存的取舍已实测：第二个 `mcp-remote` 实例能连、能调只读能力（`list_accounts` / `search_capabilities` 均成功），故并存可行但**不再需要**——已改为共享单实例。
+- [x] preset 作用域内的 `dsh-mcp-client`（stdio + npx mcp-remote + oauth）能连上：`Proxy established successfully between local STDIO and remote StreamableHTTPClientTransport`。
+- [x] 两实例并存可行但**不再需要**：第二个实例能连、能调只读能力（`list_accounts` / `search_capabilities` 均成功）。
+- [x] OAuth 令牌是否跨作用域共用 —— **不再适用**：设计已改为共享单实例（§5.2/5.3.1），不存在两个作用域各持一份 token 的问题。
 
 ### 5.5 排错记录：首次安装 9 个 preset 全部"加载失败"
 
@@ -294,7 +294,7 @@ install_bundle  target=/Users/biandc/Desktop/mybmo-agents/adapters/dsh
 | 风险 | 影响 | 处置 |
 |---|---|---|
 | `addCampaignShopping` 从未实测 | 建计划可能直接失败或字段被静默忽略 | P4 灰度单验证，`pause=true`，先 1 条 |
-| preset 内挂 MCP 未实测 | 隔离方案可能落不了地 | P2 验证，失败则退回"Host 级 + 协议约束 + `calls.jsonl` 对账" |
+| 写边界目前是协议级（非结构级） | 成员1-7 理论上能调写工具 | 三层约束（persona / skill §5 / `calls.jsonl` 对账）；根治靠 `mybmo-mcp` 只读端点，见 §5.3 |
 | 子 agent 权限继承会话沙箱 | 写不进 `.ecwf/` 或写到工作区外 | 工作目录固定在仓库内，`ECWF_HOME` 不设外路径 |
 | `material` 整体替换 + `fengchaoTitle` 读不回 | 回滚不了 | `before-snapshot.json` 必须在改前落盘 |
 | 9 个 preset 任一 YAML 写错 | 该行激活失败、roster 带诊断 | 装前用 YAML 解析 + 结构断言校验（本次已做） |
