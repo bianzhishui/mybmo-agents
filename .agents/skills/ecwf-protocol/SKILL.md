@@ -85,8 +85,15 @@ runDir: .ecwf/runs/<runId>
 
 ## 5. 读写分离：读人人有，写只有一个入口
 
-角色共用**同一个**百度 MCP 实例（Host 级 `mcp-pandabase-mybmo`，工具前缀 `mcp__pandabase_mybmo__*`）。
-所以边界不在"能不能看到工具"，而在**谁允许调哪一类**：
+百度 MCP 有**两个入口**，写边界由结构保证（`mybmo-mcp` 2026-11-13 上线 `/mcp/readonly`）：
+
+| 入口 | 工具前缀 | 谁有 | 工具面 |
+|---|---|---|---|
+| 只读端点 `/mcp/readonly` | `mcp__mybmo_read__*` | **所有角色**（Host 级一个实例） | 7 个；无 `bind_account`/`share_account`/`revoke_share`；`execute_capability` 对 `mutating != "false"` 一律服务端拒绝 |
+| 全量端点 `/mcp` | `mcp__mybmo_exec__*` | **只有成员8**（只挂在他的 preset 里） | 10 个，含写 |
+
+所以"成员调不了写能力"不再是纪律问题——**他的工具列表里根本没有那些工具**。
+仍要遵守下面的类别纪律（同一个人手上也有只读工具，别用错入口）：
 
 | 类别 | 谁可以 | 怎么判 |
 |---|---|---|
@@ -95,15 +102,18 @@ runDir: .ecwf/runs/<runId>
 
 调用纪律：
 
+0. **判定结果看 `ok` 字段，不要看 `isError`**。服务端被拒时返回的是结构化信封
+   （`ok:false` + `error.code/message/hint/capability/mutating/endpoint`），`isError` 仍是 `false`。
+   被拒调用会落 `audit_log`，`state = "denied"`——这是"有人试图越权"的唯一证据。
 1. 调之前先看 `mutating`。不确定按**写**处理（`unknown` 默认当写）。
 2. 成员1-7 命中写能力 = **违规**，团长必须判该产物无效并重派。
 3. 只有成员8 的写调用要留 `call_id`（`08-execution/calls.jsonl`）——这是回滚与事后还原的唯一线索；只读调用不必落流水，但要能把"数据从哪来"说清（如成员2 记在 `02-keywords/_notes.json`）。
 4. 改前必须落 `08-execution/before-snapshot.json`；`material` 是整体替换，`fengchaoTitle` 读不回。
 5. **未通过 ⑧-6 回读校验，不得声称"已实施"。**
 
-> 已知限制：`dsh-mcp-client` 没有工具白名单，所以"成员看不到写工具"在 DSH 侧做不到。
-> 现在的写边界靠 **persona + 本节 + 审计对账**；等 `mybmo-mcp` 提供只读端点后，再切成
-> 「成员挂只读端点 / 成员8 挂全量端点」的结构化隔离，届时本节第 1-3 条自然由结构保证。
+> 值班必读：只读入口**没有 `bind_account`**。若 `auth_status` 报某个账户 `needs_reauth: true`，
+> 任何成员都修不了——必须**人工**走全量入口或 pandabase 后台重新绑定，然后才继续。
+> 另外：两个入口**各自授权一次**（`mcp-remote` 的令牌缓存键含 URL），同机全员复用，不需要每人授权。
 
 ## 5.1 成员2 的找词（只读，必走）
 
@@ -150,7 +160,7 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 
 1. 层级：电商线只有「计划」一层；"单元" = 计划内定向组（1:1）。
 2. 接口：只用 `KeyWordShoppingService` / `ImageManageService` / `CampaignShoppingService`。
-3. 读写分离：只读能力人人可用，**写能力只有成员8**。
+3. 读写分离：只读端点人人可用，**写能力只在成员8 的工具列表里**（结构保证）。
 4. 词包：先成包再绑计划，绑定是**替换式**。
 5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。
 6. 图片：必须先 `uploadImage(addImage=true)` 拿真实 `imageId`（由成员8 执行）；连接器无生成能力。

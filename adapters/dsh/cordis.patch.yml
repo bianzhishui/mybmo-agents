@@ -670,11 +670,25 @@
             name: '@deepseek-ai/dsh-tool-todo'
             config:
               allowParallelInProgress: true
-          # 百度 MCP 不在这里挂：它由 Host 级 row `mcp-pandabase-mybmo` 提供，
-          # 所有角色共享**同一实例**（→ 读能力人人有、只有一个 token、无并发争用）。
-          # 「只有成员8 能写」由三件事保证：本 preset 的 persona + skill §5 铁律 +
-          # calls.jsonl/audit_log 对账；将来 mybmo-mcp 提供只读端点后，再切成
-          # 「成员挂只读端点 / 成员8 挂全量端点」的结构化隔离。
+          # 全量端点（10 工具，含写）：**只有这个 preset 挂**。
+          # 其他角色只拿到 Host 级 `mcp-mybmo-read`（/mcp/readonly，7 工具，无写工具）。
+          - id: mcp-mybmo-exec
+            name: '@deepseek-ai/dsh-mcp-client'
+            config:
+              serverName: mybmo_exec
+              transport: stdio
+              command: npx
+              args:
+                - "-y"
+                - "mcp-remote@latest"
+                - "https://baiduads.pandabase.top/mcp"
+                - "--transport"
+                - "http-only"
+                - "--disable-resource-parameter"
+                - "--static-oauth-client-info"
+                - '{"client_id":"709a8e16656a223a1ab7"}'
+              toolCallTimeoutMs: 120000
+              startupTimeoutMs: 120000
           - id: compaction
             name: cordis:group
             group: true
@@ -690,3 +704,28 @@
                   thresholdChars: 8192
                   headChars: 4096
                   tailChars: 1024
+
+    # ------------------------------------------------------------------ #
+    # Host 级：百度 MCP 只读入口（所有角色共享同一个实例）
+    # ------------------------------------------------------------------ #
+    # 这是 Host 级 row（不是 preset 内），所以团长与成员1-7 都能读；
+    # 它只暴露 7 个只读工具，`bind_account`/`share_account`/`revoke_share` 不存在，
+    # `execute_capability` 对 mutating != "false" 的能力一律拒绝（服务端硬拒，
+    # 并落 audit_log state=denied）。写能力只在成员8 的 preset 里（mybmo_exec）。
+    - id: mcp-mybmo-read
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: mybmo_read
+        transport: stdio
+        command: npx
+        args:
+          - "-y"
+          - "mcp-remote@latest"
+          - "https://baiduads.pandabase.top/mcp/readonly"
+          - "--transport"
+          - "http-only"
+          - "--disable-resource-parameter"
+          - "--static-oauth-client-info"
+          - '{"client_id":"709a8e16656a223a1ab7"}'
+        toolCallTimeoutMs: 120000
+        startupTimeoutMs: 120000
