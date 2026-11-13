@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "ECWF 电商推广搭建多 Agent",
+    "description": "9 个 Agent preset（团长 + 成员1-8），跑百度电商推广（CampaignShopping）自动化搭建链路：商品分析、词包、文案、素材、计划草案、接口参数、审计、以及单一写入口的实施步骤。",
+    "detail": "docs/DETAIL.md"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@local/dsh-ecwf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ECWF 电商推广自动化搭建链路：9 个 Agent preset（团长 + 成员1-8）",
+  "exports": {
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

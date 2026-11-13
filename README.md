@@ -26,6 +26,20 @@
 | 文档 | 内容 |
 |---|---|
 | [`docs/ec-shopping-workflow-v2.md`](docs/ec-shopping-workflow-v2.md) | 方案 v2 全文：结构修正、链路、接口路由、8 角色分工、产物存储规范、6 层审计清单、铁律 |
+| [`docs/dsh-multi-agent-v1.md`](docs/dsh-multi-agent-v1.md) | **DSH 多 Agent 实现方案**：9 个 Agent preset、团长派活机制、单一写入口的权限隔离、安装与验证、排期 |
+
+## 执行环境（DSH）
+
+本仓库同时是一个可安装的 DSH 组合：
+
+| 产物 | 位置 | 作用 |
+|---|---|---|
+| bundle `@local/dsh-ecwf` | `adapters/dsh/` | 9 个 Agent preset（团长 + 成员1-8） |
+| skill `ecwf-protocol` | `.agents/skills/ecwf-protocol/` | 共享协议：目录所有权、交接契约、六步顺序、审计与打回 |
+
+- 安装：`plugin_manager { action: install_bundle, target: <abs>/adapters/dsh }`
+- 百度 MCP 只挂在 **成员8** 的 preset 里，其余 8 个角色看不到任何百度工具 → 单一写入口是结构性的，不是纪律。
+- skill 由 `dsh-skill-filesystem` 从项目根自动发现，改文件即生效，无需重启。
 
 ## 执行工作区约定（摘要）
 

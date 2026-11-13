@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "ECWF e-commerce ad build-out agents",
+    "description": "Nine agent presets (lead plus members 1-8) that run the Baidu CampaignShopping build-out chain: product analysis, keyword packages, copy, assets, plan draft, API payloads, audit, and the single-writer execution step.",
+    "detail": "docs/DETAIL.md"
+  }
+}
