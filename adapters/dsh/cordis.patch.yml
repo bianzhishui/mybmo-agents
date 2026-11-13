@@ -298,15 +298,21 @@
                 - `descriptions`：0-6 条，**每条 9-80 个字符**；商品推广（targetType=1）必须非空
                 - `forbiddenCheck`：`{"passed": true|false, "hitWords": [...]}`
                 - `by`: "成员3"
-                `03-copy/image-prompts.md`：每张图的出图提示词（连接器**没有**文生图能力，出图在外部）。
+                `03-copy/image-prompts.md`：每张图一个编号块，按 `templates/03-image-prompts.md` 给全 7 个字段
+                （用途 / 尺寸比例 / 画面要素 / 是否允许文字入图 / 负面词 / 合规 / 完整提示词）。
+                连接器**没有**文生图能力，出图在外部完成——所以提示词必须**自包含到别人拿着就能出图**，
+                不许写"风格好看一点"这类无法执行的话。
 
                 ## 硬约束
+                - 编号 `img-001`、`img-002`… **连续不跳号、不重号**，且**就是后续图片文件名**（出图者按此命名回填）。
+                - 每块的四要素缺一不可：比例与最小边、是否允许文字入图、负面词、合规声明。
                 - 不得含"最/第一/根治/百分百/永久"等绝对化用语；不得承诺疗效（医药/兽药尤其）。
                 - 标题、描述逐条自查字符数，超限必须重写而不是截断。
                 - 允许只读能力；**禁止任何写能力**。不写其他成员目录。
 
                 ## 完成判据
-                `copy.json` 每一条都在长度区间内，`forbiddenCheck.passed` 为 true。
+                `copy.json` 每一条都在长度区间内，`forbiddenCheck.passed` 为 true；
+                `image-prompts.md` 的编号块数与「本单清单」行数一致，且每块 7 字段齐。
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -355,6 +361,11 @@
 
                 ## 输入
                 成员3 的 `03-copy/image-prompts.md` 与外部出好的图片文件（用户提供或已在 `04-assets/`）。
+
+                **对应关系是硬要求**：出好的图必须命名为 `img-00N.<ext>`，编号与提示词块一一对应。
+                收到名字对不上的图（如 `微信截图.png`、`final2.jpg`），先按提示词清单重命名再打包，
+                并在 `image-map.json` 的 `usedIn` 里记它对应哪个 title/picture 位；对不上就回问团长，
+                **禁止猜**。
 
                 ## 输出（只写这一个目录）
                 - `04-assets/img-001.png…`：原图（**不可再生，必须保留**）

@@ -48,6 +48,22 @@ whenToUse: 当一个任务是电商推广计划搭建链路的一环——商品
 
 要改一版就落 `xxx.v2.json`（同名 + `.v2`），要写辅助说明就落 `_notes.json` / `_draft.md`。**除这两类，不要新增文件名。**
 
+### 1.2 图片链路：编号是唯一的追溯键
+
+```mermaid
+成员3 03-copy/image-prompts.md  ──img-00N──▶  外部出图（人工/外部工具）
+                                              ↓ 必须按 img-00N.<ext> 命名
+                                      04-assets/img-00N.png
+                                              ↓ assets_pack.py（纯 base64 + MD5 + 体积 + imageName）
+                                      04-assets/{img-00N.b64, image-map.json}
+                                              ↓ 成员8 uploadImage(addImage=true)
+                                      imageId → backfill_image_ids.py 回填
+```
+
+- **编号一致**：提示词块 `img-001` = 文件名 `img-001.png` = `image-map.json` 的 `file` 字段。三者必须对得上。名字对不上的图（`微信截图.png`）先重命名，**禁止猜对应关系**。
+- **提示词必须自包含**：7 个字段（用途/比例与最小边/画面要素/是否允许文字入图/负面词/合规/完整提示词）。连接器没有文生图能力，别人拿着这段就能出图。
+- 谁出图都行（人、外部 API、将来某天接入的文生图 MCP），**只要守住命名与字段契约，下游一步都不用改**。
+
 ## 2. 交接契约（团长派活时必须给全）
 
 子 agent 看不到团长的上下文，prompt 必须自包含：
