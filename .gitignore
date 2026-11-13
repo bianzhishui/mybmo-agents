@@ -1,0 +1,15 @@
+# 执行产物（每个 run 一个目录，不入库）
+.ecwf/
+
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+
+# 本地数据 / 临时
+data/
+tmp/
+*.b64
+
+# macOS
+.DS_Store
