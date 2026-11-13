@@ -252,6 +252,9 @@ plugin_manager { action: install_bundle, target: "/Users/…/mybmo-agents/adapte
 | 6 | 成员8 会话里搜百度工具 | **看得到** `mcp__mybmo_exec__*`，且工具真能调通 | ✅ 已实测：子会话 `agentPreset: "ecwf-m8-exec"`，看到 10 个 `mcp__mybmo_exec__*` 工具，`list_accounts` 返回成功（身份 test01 / 账户 `baidu-YF电商-玛卡快消01`）。**`auth_status` 亦然**（当日曾在服务端抛错，服务端修好后 DSH 侧仍报 outputSchema 不匹配——那是 MCP 客户端缓存了旧工具定义，**重启 Desktop 即恢复**；复核实测返回 `usable: true / needs_reauth: false`） |
 | 7 | 成员8 跑 `validate_payloads.py` | 与本地一致（0/1/2 退出码） | ✅ 已实测：输出与本地一致（空的 smoke run → `FAIL 3 / WARN 2`，`EXIT_CODE=1`） |
 | 8 | 下线旧 Host 级 `mcp-pandabase-mybmo`（全量、人人可见） | 下线后结构隔离才成立 | ⏳ 待做，见 5.3.1 |
+| 9 | 只读端点工具面 | 恰好 **7** 个：`list_accounts`/`auth_status`/`list_shares`/`search_capabilities`/`get_capability_schema`/`execute_capability`/`query_audit` | ✅ 2026-11-13 直连实测 |
+| 10 | 只读端点拒写 | `execute_capability("ImageManageService.uploadImage")` → `ok:false` + `readonly endpoint…mutating=true…` | ✅ 实测 |
+| 11 | 只读端点放行读 | `execute_capability("KRService.getKRByQuery",{query:"咖啡机"})` → `ok:true`，pcPV 2291 / mobilePV 8407 | ✅ 实测 |
 
 **已有会话和它们的子 agent 会保留启动时的插件版本** —— 装完必须新开会话验证，旧会话不会热更新。
 
