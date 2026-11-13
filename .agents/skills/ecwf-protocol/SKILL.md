@@ -105,9 +105,11 @@ runDir: .ecwf/runs/<runId>
 | `scripts/manifest.py` | 读/改 stages 状态，查"下一步该谁" |
 | `scripts/record_call.py` | 追加 `calls.jsonl` 一行 |
 | `scripts/snapshot_diff.py` | before/after 快照比对（51 字段） |
+| `scripts/assets_pack.py` | 成员4：纯 base64 / imageName≤200 / MD5 / 体积 / image-map |
+| `scripts/backfill_image_ids.py` | ⑧-2 后用 uploadImage 返回值回填 imageId（默认落 `.v2.json`） |
 | `scripts/validate_payloads.py` | §5.6 预检：schema 校验 + imageId 编造检测 + 业务规则 |
 
-> 状态：`validate_payloads.py` 已可用；其余见 `docs/dsh-multi-agent-v1.md` §8 的排期。
+八个脚本都已实测可用；`validate_payloads.py` / `backfill_image_ids.py` 需要 `jsonschema`（`.venv`）。
 
 ## 8. 十条铁律（摘要，全文见方案 §八）
 

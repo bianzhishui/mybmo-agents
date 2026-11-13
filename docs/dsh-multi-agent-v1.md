@@ -263,7 +263,7 @@ install_bundle  target=/Users/biandc/Desktop/mybmo-agents/adapters/dsh
 | P0 | 方案文档 + bundle YAML + 协议 skill **（本次已落）** | — | `adapters/dsh/`、`.agents/skills/ecwf-protocol/`、本文 |
 | P1 | 装 bundle + 验证清单 1–5 | P0 | roster 里 9 个 preset 可用 |
 | P2 | 验证 6–8（preset 内 MCP）+ Host 级 MCP 下线 | P1 | 写入口真正唯一 |
-| P3 | 脚本补齐：`new_run` / `manifest` / `record_call` / `snapshot_diff` | P1 | 团长与成员8 可自动落盘 |
+| P3 | 脚本补齐：`new_run` / `manifest` / `record_call` / `snapshot_diff` / `assets_pack` / `backfill_image_ids` | P1 | ✅ 已完成，全部实测（含超限/同 MD5/rejected 守卫/快照告警） |
 | P4 | 首个灰度单：1 计划 / 1 词包 / 1 图、`pause=true` | P2+P3 | `addCampaignShopping` 实测结论（唯一未知） |
 | P5 | 批量与归档（`archive.py` 可选） | P4 成功 | 可重复生产 |
 
@@ -298,5 +298,13 @@ mybmo-agents/
 │   ├── ec-shopping-workflow-v2.md          # 链路方案（业务）
 │   └── dsh-multi-agent-v1.md               # 本文（执行环境）
 ├── schemas/  templates/                    # 校验基准与产物模板
-└── scripts/validate_payloads.py            # 预检自动校验
+└── scripts/
+    ├── _runbook.py                # 公共层：ECWF_HOME、规范 runId、resolve_run_dir
+    ├── new_run.py                 # 建 run（8 目录 + .gitignore + manifest）
+    ├── manifest.py                # 状态机 show/set/next/object
+    ├── record_call.py             # 追加 calls.jsonl
+    ├── snapshot_diff.py           # before/after 比对 + 3 项专项告警
+    ├── assets_pack.py             # 成员4：base64/命名/MD5/体积/映射表
+    ├── backfill_image_ids.py      # ⑧-2 回填 imageId（默认落 .v2.json）
+    └── validate_payloads.py       # §5.6 预检（schema + 编造检测 + 业务规则）
 ```
