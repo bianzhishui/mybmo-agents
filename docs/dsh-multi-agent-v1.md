@@ -231,8 +231,8 @@ plugin_manager { action: install_bundle, target: "/Users/…/mybmo-agents/adapte
 | 3 | 新建会话选 `ECWF 团长` | 系统提示里出现团长 persona | ✅ 已实测（卡片可选中） |
 | 4 | 团长会话里派一个 m2 | `agent_preset` 枚举可用；子 agent 以 `ecwf-m2-keywords` 身份落盘 | ✅ 已实测：子会话日志 `agentPreset: "ecwf-m2-keywords"`，产出 `02-keywords/{packages.json,binding.md,notes.json}`，`packages.json` 过 schema 校验（3 组 / 32 词），manifest 自动置 `02-keywords=done` |
 | 5 | 团长会话里搜百度工具 | **看不到** `mcp__mybmo_exec__*` | ⏳ 需新会话；**注意**：`Host` 级 `pandabase_mybmo` 此时仍挂着，所以团长暂时**看得到**它——过渡态，见 5.3 步 2 |
-| 6 | 成员8 会话里搜百度工具 | **看得到** `mcp__mybmo_exec__*`，`auth_status` 可调 | ⏳ 需新会话（preset 作用内的 MCP 首连未验） |
-| 7 | 成员8 跑 `validate_payloads.py` | 与本地一致（0/1/2 退出码） | ⏳ 需新会话 |
+| 6 | 成员8 会话里搜百度工具 | **看得到** `mcp__mybmo_exec__*`，且工具真能调通 | ✅ 已实测：子会话 `agentPreset: "ecwf-m8-exec"`，看到 10 个 `mcp__mybmo_exec__*` 工具，`list_accounts` 返回成功（身份 test01 / 账户 `baidu-YF电商-玛卡快消01`）。**`auth_status` 例外——该工具在 Host 级实例上同样报错，属 pandabase MCP 服务端 bug，与本方案无关** |
+| 7 | 成员8 跑 `validate_payloads.py` | 与本地一致（0/1/2 退出码） | ✅ 已实测：输出与本地一致（空的 smoke run → `FAIL 3 / WARN 2`，`EXIT_CODE=1`） |
 | 8 | 关闭 profile 里 Host 级 `mcp-pandabase-mybmo` | 团长仍看不到，成员8 仍看得到 | ⬜ 等 6 通过再做 |
 
 **已有会话和它们的子 agent 会保留启动时的插件版本** —— 装完必须新开会话验证，旧会话不会热更新。
