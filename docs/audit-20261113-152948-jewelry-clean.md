@@ -508,3 +508,6 @@ gantt
 | P1-1 region 静默放大 | `validate_payloads.py` 机器校验：`audience.region` 必须是地域码（数字/逗号）否则 FAIL；文档/清单写"必须回读" | 正例 PASS；反例 `region="全国"` FAIL |
 | 建议10 编号失效声明 | skill §1.2：提示词编号无对应产出须在同文件追加"作废声明" | 已补 |
 | P2-7 文件名封闭清单 | `scripts/manifest.py lint-files`：目录内出现清单外文件名即 FAIL（`.vN` 变体与 `_` 前缀自动放行）；写进 §5.4 与 skill §1.1 | 该 run 54 个文件全合规 PASS；塞 `05-plan/notes.json`、`01-product/summary.md` → FAIL |
+| P0-2 兜底（复用图库图） | `validate_payloads.py` 按 image-map 的 `width/height` 校验 pictures 尺寸白名单 + ≤18；反例 800×800 → FAIL「上传成功 ≠ 尺寸合规」 | 已补 |
+| 第5层执行产物 | `validate_payloads.py` 校验 `before-snapshot.json` 存在、`calls.jsonl` 每行有 `call_id`；反例删 before-snapshot → FAIL | 已补 |
+| 6.5 #2 required 边界 | 方案 §5.6 注明：本地 schema 的 `required` 仅本地机检生效，上游无 `required` | 已补 |

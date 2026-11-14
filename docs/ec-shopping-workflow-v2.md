@@ -342,6 +342,13 @@ API 参数
    （不再依赖 `_notes` 里的"偏离声明"兜底）
 4. **上游自述对账（建议9）**：`01-product/required-fields*.json` 最新版里，`unchangedFields` 不得包含被更正字段，
    `complianceNotesRetained` 的规格数字必须与 `fields.spec` 一致；不符即 FAIL
+5. **图片尺寸白名单（P0-2 兜底）**：`pictures[].imageId` 若已是整数，按 image-map 声明的 `width/height`
+   必须是 `370×245 / 1140×640 / 750×1000` 之一、且 ≤18 张；**复用图库既有图也照查**（"上传成功 ≠ 尺寸合规"）
+6. **执行产物完整性（第5层）**：`08-execution/` 一旦开工，`before-snapshot.json` 与 `calls.jsonl` 必须存在，
+   且 `calls.jsonl` 每行都有 `call_id`
+
+> 注（6.5 #2）：本地 `schemas/` 的 `required` **只在本地机检生效**——上游 SDK / `capabilities.json` 表达不了
+> `required`，所以"必填"的权威来源始终是服务端报错 + 本仓机检，不要把本地 schema 当成接口约束。
 
 把"人检查"变成"机器检查"，是这层规范最大的价值。
 

@@ -389,6 +389,85 @@ def check_audience_enums(payload: Any, report: Report) -> None:
                 )
 
 
+def _entry_dims(entry: dict) -> tuple[int | None, int | None]:
+    if entry.get("width") and entry.get("height"):
+        return entry.get("width"), entry.get("height")
+    size = entry.get("size")
+    if isinstance(size, dict) and size.get("width") and size.get("height"):
+        return size.get("width"), size.get("height")
+    return None, None
+
+
+def check_picture_dimensions(run_dir: Path, payloads: dict[str, Any], report: Report,
+                             explicit_map: str | None = None) -> None:
+    """P0-2 机检兜底：pictures 的 imageId 必须是**精确宽高白名单**里的尺寸。
+
+    `assets_pack.py` 只在"打包本地图片"时卡尺寸；但**复用图库既有 imageId**（如直接把上游
+    `getProduct.logo` 的 800×800 图塞进创意）会绕过它 —— 这正是本 run 第 2 次 901217 的成因。
+    这里按 image-map 里声明的尺寸再核一遍。
+    """
+    image_map, map_label = load_image_map(run_dir, explicit_map)
+    by_id = {
+        a.get("imageId"): a for a in image_map.values() if isinstance(a.get("imageId"), int)
+    }
+    allowed = {(370, 245), (1140, 640), (750, 1000)}
+    payload = payloads.get("addCampaignShopping.json")
+    if not isinstance(payload, dict):
+        return
+    for ci, c in enumerate(payload.get("campaignShoppingTypes") or []):
+        pics = ((c or {}).get("material") or {}).get("pictures") or []
+        if len(pics) > 18:
+            report.fail(f"plan[{ci}].material.pictures", f"{len(pics)} 张 > 上限 18（901217 数量超限）")
+        for i, item in enumerate(pics):
+            v = (item or {}).get("imageId")
+            label = f"plan[{ci}].pictures[{i}].尺寸"
+            if not isinstance(v, int):
+                continue  # 占位符，尺寸等回填后再验
+            entry = by_id.get(v)
+            if entry is None:
+                continue  # 已由 check_image_ids 判编造
+            w, h = _entry_dims(entry)
+            if not w or not h:
+                report.warn(label, f"imageId={v} 在 {map_label} 未声明 width/height，无法验证尺寸")
+            elif (w, h) in allowed:
+                report.ok(label, f"imageId={v} = {w}×{h} 命中白名单")
+            else:
+                hint = "（这是白名单尺寸的转置：方向固定，横竖颠倒也会被拒）" if (h, w) in allowed else ""
+                report.fail(
+                    label,
+                    f"imageId={v} = {w}×{h} 不在精确白名单 {{370×245, 1140×640, 750×1000}}{hint}"
+                    " —— 上传成功 ≠ 尺寸合规",
+                )
+
+
+def check_execution_artifacts(run_dir: Path, report: Report) -> None:
+    """第5层可逆性：⑧ 一旦开工，回滚基准与 call_id 流水必须在。"""
+    d = run_dir / "08-execution"
+    if not d.is_dir() or not any(d.iterdir()):
+        return
+    for name in ("before-snapshot.json", "calls.jsonl"):
+        if not (d / name).is_file():
+            report.fail(f"08-execution/{name}", "缺失（回滚/审计依据）")
+    calls = d / "calls.jsonl"
+    if calls.is_file():
+        bad = 0
+        for ln, line in enumerate(calls.read_text(encoding="utf-8").splitlines(), 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                bad += 1
+                continue
+            if not row.get("call_id"):
+                bad += 1
+        if bad:
+            report.fail("08-execution/calls.jsonl", f"{bad} 行缺 call_id 或不是合法 JSON")
+        else:
+            report.ok("08-execution/calls.jsonl", "每行都有 call_id")
+
+
 def check_plan_payload_consistency(
     payload: Any, run_dir: Path, report: Report, explicit_map: str | None = None
 ) -> None:
@@ -594,6 +673,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     check_copy_forbidden(run_dir, report)
     check_required_fields_consistency(run_dir, report)
+    check_picture_dimensions(run_dir, payloads, report, args.image_map)
+    check_execution_artifacts(run_dir, report)
 
     if args.json:
         print(json.dumps({"runDir": str(run_dir), **report.dump()}, ensure_ascii=False, indent=2))
