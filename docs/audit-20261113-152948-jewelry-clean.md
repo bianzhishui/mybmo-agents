@@ -55,9 +55,9 @@
 | P2-3 | ⑥ 曾**原地同名重写**已被审计消费的 payload | 违反"冻结不改写"，虽在 `_notes.revisionReason` 说明且 diff 可复核 |
 | P2-4 | `03-copy/image-prompts.md#img-001` 提示词块**无对应产出** | 最终素材改取 `getProduct.logo`，`promptRef: null`，编号-文件-映射三方对应断裂 |
 | P2-5 | 成员6 声明 `auditStatus=2（机审通过）`，审计当时无法复现 | 原因是用 `fields` 把 `auditStatus` 过滤掉了；**不传 `fields` 即可复现**（`15505964077` → `auditStatus: 2`、`reason: "已通过搜索推广机审策略"`，call `5ae713fd6b9b`） |
-| P2-6 | 口径反复更正 | audience"12 键 vs 14 键"、"v7 是 11 键还是 12 键"在审计与成员间来回纠正 3 次 |
+| P2-6 | 口径反复更正 | audience"12 键 vs 14 键"、"v7 是 11 键还是 12 键"在审计与成员间来回纠正 3 次。**根因（2026-11-14 实测确认）**：服务端会给 `audience` **补默认值**——写 12 键、读回 13 键（+`excludeTrans:"0"`），绑包后再 +`fcKeywordWtpids` = 14 键；且必带键其实**只有 `interests`**，早期按「14 键全带」表述才导致三方对不上数。**定口径：以读回为准，写→读键数不等是正常的**（实测 v7 = 12 键，call `98b453c47249`） |
 | P2-7 | run 目录文件命名超出协议封闭清单 | 各目录出现 `image-map.v2..v6.json`、`required-fields.v2/v3.json`、`plan-draft.v2.json`、`addCampaignShopping.v2..v7.json`、`_*-response.json`（下划线前缀合法，`.vN` 合法，但 `version` 与文件名脱钩） |
-| P2-8 | 6 次 `uploadImage` 被 readonly 端点拒绝（`denied`，request_bytes=2、response_bytes=0） | 时间 14:26–14:45，**早于本 run 创建**，属更早会话的越权尝试；本 run 未复现 |
+| P2-8 | 6 次 `uploadImage` 被 readonly 端点拒绝（`denied`，request_bytes=2、response_bytes=0） | 时间 14:26–14:45，**早于本 run 创建**，属更早会话的越权尝试；本 run 未复现。**这是只读入口的设计行为（ADR 0011），不是缺陷**：`mutating=true` 的能力在入口处被拒、`request_bytes≈2` / `response_bytes=0` 就是它的特征；出现这类 `denied` 说明守卫在正常工作 |
 
 ### 1.4 问题分布小结
 
