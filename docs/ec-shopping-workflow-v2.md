@@ -204,7 +204,7 @@ API 参数
 
 | # | 动作 | 能力 | 成功判据 |
 |---|---|---|---|
-| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>`（默认含 gate_check --for execute）** | 授权正常、字段无缺、预检 PASS |
+| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>`（默认含 gate_check --for execute）**。**前置：团长已 `manifest.py anchor`**，否则会判「未锚定」 | 授权正常、字段无缺、预检 PASS |
 | 2 | **图片入库** | `uploadImage`（`addImage=true`，members4 提供的 base64） | 返回 `imageId`，回填映射表 |
 | 3 | **建词包** | `addKeywordPackages`（成员2 的 `keywordPackageTypes`） | 返回 `packageId`，`getKeywordPackages` 回读存在 |
 | 4 | **建计划** | `addCampaignShopping`（`pause=true`，`material` 引用步骤2 的 `imageId`） | 返回 `campaignShoppingId`，`succ=oprs` |
@@ -390,8 +390,8 @@ API 参数
 | **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json` + **已锚定（`manifest.approvalSha256`）**；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
 | **系统文件** | `.DS_Store` 等点文件不参与文件名校验；**未知子目录**（如 `99-junk/`）直接 FAIL | `manifest.py lint-files` |
 
-`preflight.sh` **默认**就包含 `gate_check --for execute`（审计放行件缺失即 FAIL）；只在做半成品自检时用 `--skip-gates`。
-⑧ 侧建议加 `--strict-anchor`（锚定缺失/链断裂即 FAIL）；⑧-6 建议加 `--strict-snapshot`（非预期字段差异即 FAIL）。
+`preflight.sh` **默认**就包含 `gate_check --for execute`（要求 01~07 done + approval pass + 已锚定 + payload 内容与 `approval.sha256` 相符）；半成品自检用 `--skip-gates`。
+`--strict-anchor` 额外校验 approval 哈希/日志链；`--strict-snapshot` 让非预期字段差异也 FAIL（推荐 ⑧-6）。
 
 ## 六、产出物模板
 

@@ -723,6 +723,37 @@ class TestRound8(RunCase):
         self.assertIn("2000", r.stdout)
 
 
+class TestPayloadHashGate(RunCase):
+    def _anchor(self):
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
+                "--log", str(self.tmp / "a.log"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def _tamper_payload(self):
+        p = self.load("06-payloads/addCampaignShopping.json")
+        p["campaignShoppingTypes"][0]["campaignShoppingName"] = "审计后被改的名字"
+        self.save("06-payloads/addCampaignShopping.json", p)
+
+    def test_gate_execute_detects_payload_tamper(self):
+        self._anchor()
+        self._tamper_payload()
+        r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("payload 内容与 approval.sha256 不符", r.stdout)
+
+    def test_final_success_detects_payload_tamper(self):
+        self._anchor()
+        self._tamper_payload()
+        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        m["pendingGates"] = {}
+        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(
+            json.dumps({"confirmedBy": "u", "quote": "ok"}), encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("payload 文件缺失或与 approval.sha256 不符", r.stderr)
+
+
 class TestSnapshotEnums(unittest.TestCase):
     def test_exclude_trans_zero_is_legal(self):
         sys.path.insert(0, str(SCRIPTS))

@@ -32,7 +32,6 @@ CAMPAIGN_FIELD_ENUMS: dict[str, set[str]] = {
 # pictures 精确宽高白名单（方向固定），与 schemas/addCampaignShopping.schema.json 的
 # definitions.material.properties.pictures["x-platform-allowedSizes"] 保持一致
 PICTURES_ALLOWED_SIZES: set[tuple[int, int]] = {(370, 245), (1140, 640), (750, 1000)}
-PICTURES_ALLOWED_SIZES_LIVE_ONLY: set[tuple[int, int]] = {(1140, 640)}
 MAX_PICTURES = 18
 
 

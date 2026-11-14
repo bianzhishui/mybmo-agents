@@ -22,7 +22,6 @@ import hashlib
 import json
 import sys
 from datetime import datetime
-from pathlib import Path
 
 from _runbook import resolve_run_dir
 

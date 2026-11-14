@@ -23,7 +23,7 @@ import json
 import sys
 from pathlib import Path
 
-from _runbook import STAGES, resolve_run_dir
+from _runbook import STAGES, resolve_run_dir, within
 
 
 def sha256_of(path: Path) -> str:
@@ -79,6 +79,12 @@ def main(argv: list[str] | None = None) -> int:
             payload_rel = str(approval.get("payload") or "")
             if stage06 and payload_rel and Path(stage06).name != Path(payload_rel).name:
                 problems.append(f"approval.payload={Path(payload_rel).name} ≠ manifest 06={Path(stage06).name}")
+            # 校验"货"本身：payload 必须存在且 sha 与 approval 一致
+            payload_path = within(run_dir, payload_rel) if payload_rel else None
+            if payload_path is None or not payload_path.is_file():
+                problems.append(f"approval.payload 文件不存在或越界：{payload_rel!r}")
+            elif approval.get("sha256") and sha256_of(payload_path) != approval["sha256"]:
+                problems.append("payload 内容与 approval.sha256 不符（审计后被换过）")
 
     if args.target == "execute":
         stages = manifest.get("stages", {})

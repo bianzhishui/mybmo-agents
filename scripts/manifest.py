@@ -45,6 +45,7 @@ from _runbook import (
     file_version,
     resolve_run_dir as _resolve_run_dir,
     strip_version,
+    within,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -289,16 +290,6 @@ def lint_files(run_dir: Path) -> int:
 
 
 SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
-
-
-def within(base: Path, rel: str) -> Path | None:
-    """把 rel 解析到 base 内；越界（../、绝对路径）返回 None。"""
-    try:
-        p = (base / rel).resolve()
-        p.relative_to(base.resolve())
-        return p
-    except (ValueError, OSError):
-        return None
 
 
 def safe_run_id(run_dir: Path, manifest: dict) -> str:
@@ -642,6 +633,16 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             if sha256_of(run_dir / "07-audit" / "approval.json") != manifest.get("approvalSha256"):
                 print("拒绝置 success：approval.json 与锚定值不符（锚定后被改过）", file=sys.stderr)
+                return 1
+            try:
+                _ap = json.loads((run_dir / "07-audit" / "approval.json").read_text(encoding="utf-8"))
+                _rel = str(_ap.get("payload") or "")
+                _pp = within(run_dir, _rel) if _rel else None
+                if _pp is None or not _pp.is_file() or sha256_of(_pp) != _ap.get("sha256"):
+                    print("拒绝置 success：payload 文件缺失或与 approval.sha256 不符（内容被换过）", file=sys.stderr)
+                    return 1
+            except (json.JSONDecodeError, OSError):
+                print("拒绝置 success：approval.json 解析失败", file=sys.stderr)
                 return 1
         manifest["finalStatus"] = args.status
         if args.reason:

@@ -100,3 +100,13 @@ def pick_latest_image_map(assets_dir: Path) -> Path | None:
         fallback = assets_dir / "image-map.json"
         return fallback if fallback.is_file() else None
     return max(cands, key=lambda p: (image_map_version(p), p.name))
+
+
+def within(base: Path, rel: str) -> Path | None:
+    """把 rel 解析到 base 内；越界（../、绝对路径）返回 None。"""
+    try:
+        p = (base / rel).resolve()
+        p.relative_to(base.resolve())
+        return p
+    except (ValueError, OSError):
+        return None
