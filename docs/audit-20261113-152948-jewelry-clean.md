@@ -480,5 +480,7 @@ gantt
 | 孤儿 run（建议8 / P1-12） | `20261113-152452-jewelry-clean` 置 `finalStatus=abandoned`；`new_run.py` 增加同 slug 未完结检查 | — |
 | spec 自相矛盾（P1-3 / P2-2） | `01-product/required-fields.v4.json` 统一为"AI 错字、规格待核实、禁止写入创意" | 清掉 `unchangedFields.spec` 与 complianceNotes 里的 "60mL 需实物核对" |
 
-> 遗留（见交接表"仍未解决"）：`04-assets`/`07-audit` 的 version↔文件名错位属历史 run 数据，
-> 本次只做**检出**未改动冻结产物；后续 run 由 `manifest.py verify` 在 ⑧ 执行前阻断。
+> version↔文件名错位（P1-5）：后续 run 由 `manifest.py verify` 在 ⑧ 执行前阻断。
+> 本 run 的两处历史错位按方案 A **只改记账、不动产物**：`04-assets.version` 7→6（对齐 `image-map.v6.json`）、
+> `07-audit.version` 2→1（文件名无 `.vN`），并在 `07-audit` 条目加 `historyNote` 如实登记
+> "audit-report.md 为第二轮复审、曾原地重写"。改后 `manifest.py verify` 这两条转 PASS。
