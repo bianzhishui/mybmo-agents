@@ -6,9 +6,14 @@
 2. 确保 `.ecwf/.gitignore` 内容为 `*` + `!.gitignore`（产物不入库、不在 git status 碍眼）；
 3. 按 `templates/manifest.json` 生成 `manifest.json`（状态机 + 索引）。
 
+同 slug 未完结检查（P1-12 / 建议8）：默认拒绝在与某个 finalStatus 仍为 running 的
+同 slug run 并存时新建，避免"上一轮中断后直接另起一炉"，留下归属不明的孤儿 run
+（真实案例：20261113-152452-jewelry-clean）。确认要并行时显式加 `--allow-parallel`。
+
 用法：
     python3 scripts/new_run.py --slug jewelry-clean
     python3 scripts/new_run.py --slug jewelry-clean --account main --base /tmp/ecwf
+    python3 scripts/new_run.py --slug jewelry-clean --allow-parallel
     python3 scripts/new_run.py --slug x --dry-run
 
 stdout 打印一行 runDir 绝对路径，便于 `RUN=$(...)` 取值。
@@ -55,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base", default=None, help="覆盖工作区根（默认 $ECWF_HOME 或 <项目>/.ecwf）")
     ap.add_argument("--dsh-session-id", default=None, help="默认读 $DSH_SESSION_ID")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--allow-parallel", action="store_true",
+                    help="允许与同 slug 的未完结 run 并存（默认拒绝）")
     args = ap.parse_args(argv)
 
     if not SLUG_RE.match(args.slug):
@@ -71,6 +78,31 @@ def main(argv: list[str] | None = None) -> int:
     if run_dir.exists():
         print(f"run 已存在：{run_dir}", file=sys.stderr)
         return 2
+
+    # 同 slug 未完结 run 检查：防止孤儿 run（P1-12）
+    runs_root = home / "runs"
+    if runs_root.is_dir() and not args.allow_parallel:
+        open_same_slug = []
+        for d in sorted(runs_root.iterdir()):
+            if not d.is_dir() or not d.name.endswith(f"-{args.slug}"):
+                continue
+            mf = d / "manifest.json"
+            if not mf.is_file():
+                continue
+            try:
+                status = json.loads(mf.read_text(encoding="utf-8")).get("finalStatus", "running")
+            except json.JSONDecodeError:
+                status = "running"
+            if status == "running":
+                open_same_slug.append(d.name)
+        if open_same_slug:
+            print(
+                f"拒绝新建：同 slug（{args.slug}）已有未完结 run：{', '.join(open_same_slug)}\n"
+                f"  先收尾（scripts/manifest.py --run <runId> final abandoned|success）"
+                f"或确认要并行时加 --allow-parallel",
+                file=sys.stderr,
+            )
+            return 2
 
     manifest = load_manifest_template()
     manifest.update(

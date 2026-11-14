@@ -29,6 +29,14 @@ from typing import Any
 
 from _runbook import resolve_run_dir
 
+try:
+    from _enums import AUDIENCE_FIELD_ENUMS, CAMPAIGN_FIELD_ENUMS, check_enum
+except ImportError:  # pragma: no cover
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _enums import AUDIENCE_FIELD_ENUMS, CAMPAIGN_FIELD_ENUMS, check_enum
+
 
 def flatten(node: Any, trail: str = "") -> dict[str, Any]:
     """把嵌套结构压成 a/b[0]/c 形式的路径表，便于逐字段比对。"""
@@ -65,6 +73,29 @@ def diff(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _is_empty(value: Any) -> bool:
     return value is None or value == "" or (isinstance(value, (list, dict)) and not value)
+
+
+def enum_warnings(after: Any, trail: str = "") -> list[str]:
+    """2026-11-14：读回值也按业务枚举核一次（schema 管不到服务端回显）。
+
+    重点是 `audience.excludeTrans`：官方枚举只写 1/4，但服务端接受并默认 "0"（=不限）。
+    旧口径会把真值 "0" 当成非法，从而在快照比对里制造假告警。现在共用
+    `scripts/_enums.py`，`excludeTrans="0"` 合法、不再告警。
+    """
+    warns: list[str] = []
+    if isinstance(after, dict):
+        for k, v in after.items():
+            here = f"{trail}/{k}" if trail else k
+            if not isinstance(v, (dict, list)):
+                table = AUDIENCE_FIELD_ENUMS if k in AUDIENCE_FIELD_ENUMS else CAMPAIGN_FIELD_ENUMS
+                err = check_enum(table, k, v)
+                if err:
+                    warns.append(f"读回值枚举不符：{here} {err}")
+            warns.extend(enum_warnings(v, here))
+    elif isinstance(after, list):
+        for i, v in enumerate(after):
+            warns.extend(enum_warnings(v, f"{trail}[{i}]"))
+    return warns
 
 
 def hazards(before: dict[str, Any], after: dict[str, Any], rows: list[dict[str, Any]]) -> list[str]:
@@ -116,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     after = json.loads(after_path.read_text(encoding="utf-8"))
     rows = diff(before, after)
     warns = hazards(before, after, rows)
+    warns.extend(enum_warnings(after))
 
     if args.json:
         print(json.dumps(

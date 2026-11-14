@@ -31,6 +31,14 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+try:
+    from _enums import AUDIENCE_FIELD_ENUMS, check_enum
+except ImportError:  # pragma: no cover - 直接以脚本路径导入时的兜底
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _enums import AUDIENCE_FIELD_ENUMS, check_enum
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = PROJECT_ROOT / "schemas"
 
@@ -180,20 +188,57 @@ def iter_image_ids(node: Any, trail: str = "") -> list[tuple[str, Any]]:
     return found
 
 
-def load_image_map(run_dir: Path) -> dict[str, Any]:
-    """返回 {file: entry}，file 为 04-assets/image-map.json 里的 assets[].file。"""
-    path = run_dir / "04-assets" / "image-map.json"
-    if not path.is_file():
-        return {}
+IMAGE_MAP_RE = re.compile(r"^image-map(?:\.v(\d+))?\.json$")
+
+
+def _image_map_version(path: Path) -> int:
+    m = IMAGE_MAP_RE.match(path.name)
+    if m:
+        return int(m.group(1) or 1)
+    # 退路：读文件里的 version 字段（有些 run 用 image-map.<ts>.json）
+    try:
+        return int(load_json(path).get("version") or 1)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        return 1
+
+
+def pick_latest_image_map(run_dir: Path) -> Path | None:
+    """按文件名 .vN（缺失视为 v1）取最新一版 image-map；不存在返回 None。
+
+    历史坑（P1-6）：旧版这里硬编码 `04-assets/image-map.json`（永远 v1），
+    换图后把真实 imageId 判成"编造"，逼得审计用"临时目录把 vN 就位"的跑法 B。
+    现在默认取最新版，也支持 --image-map 显式指定。
+    """
+    assets = run_dir / "04-assets"
+    if not assets.is_dir():
+        return None
+    candidates = [p for p in assets.glob("image-map*.json") if IMAGE_MAP_RE.match(p.name)]
+    if not candidates:
+        fallback = assets / "image-map.json"
+        return fallback if fallback.is_file() else None
+    return max(candidates, key=lambda p: (_image_map_version(p), p.name))
+
+
+def load_image_map(run_dir: Path, explicit: str | None = None) -> tuple[dict[str, Any], str]:
+    """返回 ({file: entry}, 来源说明)。file 为 image-map 里的 assets[].file。"""
+    path = Path(explicit).expanduser().resolve() if explicit else pick_latest_image_map(run_dir)
+    if path is None or not path.is_file():
+        return {}, "（未找到 image-map）"
     try:
         data = load_json(path)
     except json.JSONDecodeError:
-        return {}
-    return {a.get("file"): a for a in data.get("assets", []) if isinstance(a, dict)}
+        return {}, f"{path.name}（JSON 解析失败）"
+    assets = {a.get("file"): a for a in data.get("assets", []) if isinstance(a, dict)}
+    supersedes = data.get("supersedes")
+    label = path.name + (f"（supersedes {supersedes}）" if supersedes else "")
+    return assets, label
 
 
-def check_image_ids(payloads: dict[str, Any], run_dir: Path, report: Report) -> None:
-    image_map = load_image_map(run_dir)
+def check_image_ids(
+    payloads: dict[str, Any], run_dir: Path, report: Report, explicit_map: str | None = None
+) -> None:
+    image_map, map_label = load_image_map(run_dir, explicit_map)
+    report.ok("image-map 版本", f"以 {map_label} 为溯源基准")
     known_ids = {
         a.get("imageId")
         for a in image_map.values()
@@ -206,6 +251,26 @@ def check_image_ids(payloads: dict[str, Any], run_dir: Path, report: Report) -> 
         for where, value in iter_image_ids(payload):
             any_ref = True
             label = f"imageId@{name}:{where}"
+            # T2：material.userPortrait 走"复用已过审品牌头像"分支，不当素材图溯源。
+            # 品牌头像是图库既有对象（120×120、auditStatus=2），不由 04-assets 产出，
+            # 拿它去 image-map 查必然是"无记录"。这里只要求是正整数，并提示证据链要求。
+            if "userPortrait" in where:
+                if isinstance(value, int) and value >= 1:
+                    report.ok(
+                        label,
+                        f"userPortrait imageId={value} 按『复用已过审品牌头像（120×120）』处理，"
+                        "不按素材图溯源；须在 _notes 里给 call_id 证明（getImageList / getCampaignShopping）",
+                    )
+                else:
+                    m = PENDING_RE.match(str(value))
+                    if m:
+                        report.warn(
+                            label,
+                            f"{value} 仍是占位符：品牌头像须在 ⑧-1 前确定真实 imageId（复用图库既有头像）",
+                        )
+                    else:
+                        report.fail(label, f"userPortrait.imageId 只接受正整数，实际 {value!r}")
+                continue
             if isinstance(value, int):
                 if not image_map:
                     report.fail(
@@ -285,6 +350,33 @@ def check_plan_rules(payload: Any, report: Report) -> None:
             )
 
 
+def check_audience_enums(payload: Any, report: Report) -> None:
+    """T3：枚举表补 excludeTrans "0"。schema 之外再核一次业务枚举，
+    防止"schema 与口径脱钩"（P1-8：schema 曾只认 1/4，把服务端真值 "0" 判非法）。"""
+    if not isinstance(payload, dict):
+        return
+    for idx, c in enumerate(payload.get("campaignShoppingTypes") or []):
+        audience = c.get("audience") or {}
+        if not isinstance(audience, dict):
+            continue
+        for field in AUDIENCE_FIELD_ENUMS:
+            if field not in audience:
+                continue
+            err = check_enum(AUDIENCE_FIELD_ENUMS, field, audience[field])
+            label = f"plan[{idx}].audience.{field}"
+            if err:
+                report.fail(label, err)
+            else:
+                report.ok(label, f"= {audience[field]!r} 在允许枚举内")
+        if "interests" not in audience:
+            report.fail(
+                f"plan[{idx}].audience.interests",
+                "缺 interests（键级唯一必带）→ 901216「兴趣错误」；不限请写 \"0\"",
+            )
+        else:
+            report.ok(f"plan[{idx}].audience.interests", "interests 已带")
+
+
 def check_copy_forbidden(run_dir: Path, report: Report) -> None:
     path = run_dir / "03-copy" / "copy.json"
     if not path.is_file():
@@ -309,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run", help="runId（目录名），默认取最新")
     ap.add_argument("--run-dir", help="直接指定 run 目录")
     ap.add_argument("--allow-missing", action="store_true", help="payload 缺文件只报警告")
+    ap.add_argument("--image-map", help="显式指定 image-map 文件（默认按 .vN 取 04-assets 下最新一版）")
     ap.add_argument("--json", action="store_true", help="输出 JSON 报告")
     args = ap.parse_args(argv)
 
@@ -330,8 +423,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         payloads[base] = validate_one_payload(base, path, report)
 
-    check_image_ids(payloads, run_dir, report)
+    check_image_ids(payloads, run_dir, report, args.image_map)
     check_plan_rules(payloads.get("addCampaignShopping.json"), report)
+    check_audience_enums(payloads.get("addCampaignShopping.json"), report)
     check_copy_forbidden(run_dir, report)
 
     if args.json:

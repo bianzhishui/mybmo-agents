@@ -7,9 +7,16 @@
         [--file PATH] [--by WHO] [--reason TEXT] [--retry-to STAGE] [--bump-version]
     next                       打印"下一步该谁"（第一个非 done 的阶段）
     object <key> <value>       写 objects 下的键（campaignShoppingId 等）
+    final <status>             写 finalStatus（success / success-paused / failed / abandoned），可带 --reason
+    verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256
 
 状态枚举：pending / running / done / rejected / frozen
-硬约束：`rejected` 必须同时给 --reason 与 --retry-to，否则拒绝执行。
+finalStatus 枚举：running / success / success-paused / failed / abandoned
+硬约束：
+  - `rejected` 必须同时给 --reason 与 --retry-to，否则拒绝执行。
+  - `version` 必须等于文件名里的 `.vN`（无 `.vN` 视为 1）。这是 P1-5/P2-7 的机器化。
+  - `verify` 会把 06-payloads 执行版的 sha256 与 08-execution/execution-plan.json 里
+    记录的 sha256 对账，不一致就 FAIL（防止"拿旧 payload 烧掉最后一次重试"）。
 
 退出码：0 ok / 1 校验不过 / 2 用法或环境错。
 """
@@ -17,7 +24,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -44,6 +53,8 @@ OWNER = {
     "08-execution": "成员8",
 }
 STATUSES = {"pending", "running", "done", "rejected", "frozen"}
+FINAL_STATUSES = {"running", "success", "success-paused", "failed", "abandoned"}
+VERSIONED_RE = re.compile(r"^(?P<stem>.+?)(?:\.v(?P<v>\d+))?\.json$")
 
 
 resolve_run = _resolve_run_dir
@@ -61,6 +72,101 @@ def save(run_dir: Path, manifest: dict) -> None:
     with (run_dir / "manifest.json").open("w", encoding="utf-8") as fh:
         json.dump(manifest, fh, ensure_ascii=False, indent=2)
         fh.write("\n")
+
+
+def file_version(name: str) -> int:
+    """文件名里的版本：`x.json`=1、`x.v7.json`=7。"""
+    m = VERSIONED_RE.match(name)
+    return int(m.group("v")) if (m and m.group("v")) else 1
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _walk(obj, trail=""):
+    if isinstance(obj, dict):
+        yield trail, obj
+        for k, v in obj.items():
+            yield from _walk(v, f"{trail}/{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _walk(v, f"{trail}[{i}]")
+
+
+def recorded_shas(run_dir: Path) -> dict[str, str]:
+    """从 execution-plan.json 收集 {basename: sha256} 形式的放行记录。"""
+    plan_path = run_dir / "08-execution" / "execution-plan.json"
+    if not plan_path.is_file():
+        return {}
+    try:
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    out: dict[str, str] = {}
+    for _trail, node in _walk(plan):
+        path_v, sha_v = node.get("path"), node.get("sha256")
+        if isinstance(path_v, str) and isinstance(sha_v, str):
+            out[Path(path_v).name] = sha_v
+    return out
+
+
+def verify(run_dir: Path, manifest: dict, record: bool) -> int:
+    """版本 ↔ 文件名强绑定 + 将发送文件 sha256 对账。返回 0 通过 / 1 有 FAIL。"""
+    fails: list[str] = []
+    warns: list[str] = []
+    recorded = recorded_shas(run_dir)
+    print(f"run: {run_dir}\n")
+    for stage in STAGES:
+        entry = manifest.get("stages", {}).get(stage, {})
+        rel = entry.get("file")
+        if not rel:
+            continue
+        path = run_dir / rel
+        declared = entry.get("version")
+        if not path.is_file():
+            fails.append(f"{stage}: manifest 指向的 {rel} 不存在")
+            print(f"[FAIL] {stage:12} 文件缺失 {rel}")
+            continue
+        fv = file_version(path.name)
+        if declared is None:
+            if fv != 1:
+                fails.append(f"{stage}: 文件 {path.name} 是 v{fv}，但 manifest 没写 version")
+                print(f"[FAIL] {stage:12} {path.name} 是 v{fv}，manifest 缺 version")
+            else:
+                print(f"[ok]   {stage:12} {path.name}（v1，manifest 未写 version，视为 1）")
+        elif int(declared) != fv:
+            fails.append(
+                f"{stage}: version={declared} 与文件名 {path.name} 的 .v{fv} 错位"
+            )
+            print(f"[FAIL] {stage:12} version={declared} ≠ 文件名 {path.name} 的 .v{fv}（错位）")
+        else:
+            print(f"[ok]   {stage:12} version={declared} == 文件名 .v{fv}")
+
+        # 06-payloads 等"将发送文件"的 sha256
+        digest = sha256_of(path)
+        rec = recorded.get(path.name)
+        if rec is None:
+            warns.append(f"{stage}: {path.name} 未在 execution-plan.json 留下放行 sha256")
+            print(f"[warn] {stage:12} sha256={digest[:16]}…  无放行记录可对账")
+            if record and stage == "06-payloads":
+                entry["sha256"] = digest
+                warns.append(f"{stage}: 已把 sha256={digest[:16]}… 写入 manifest（--record）")
+        elif rec == digest:
+            print(f"[ok]   {stage:12} sha256={digest[:16]}…  与放行记录一致")
+        else:
+            fails.append(
+                f"{stage}: {path.name} sha256={digest} ≠ execution-plan 放行记录 {rec}"
+            )
+            print(f"[FAIL] {stage:12} sha256 不一致：现场 {digest[:16]}… ≠ 放行 {rec[:16]}…")
+    for w in warns:
+        print(f"[WARN] {w}")
+    print(f"\n结论：{'FAIL' if fails else 'PASS'}（FAIL={len(fails)} WARN={len(warns)}）")
+    return 1 if fails else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -84,6 +190,13 @@ def main(argv: list[str] | None = None) -> int:
     p_obj = sub.add_parser("object", help="写 objects 键")
     p_obj.add_argument("key")
     p_obj.add_argument("value")
+
+    p_final = sub.add_parser("final", help="写 finalStatus")
+    p_final.add_argument("status", choices=sorted(FINAL_STATUSES))
+    p_final.add_argument("--reason")
+
+    p_verify = sub.add_parser("verify", help="版本↔文件名绑定 + 将发送文件 sha256 对账")
+    p_verify.add_argument("--record", action="store_true", help="把 06-payloads 执行版 sha256 写回 manifest")
 
     args = ap.parse_args(argv)
     run_dir = resolve_run(args.run, args.run_dir)
@@ -114,6 +227,20 @@ def main(argv: list[str] | None = None) -> int:
         manifest.setdefault("objects", {})[args.key] = value
         save(run_dir, manifest)
         print(f"objects.{args.key} = {value!r}")
+        return 0
+
+    if args.cmd == "verify":
+        rc = verify(run_dir, manifest, args.record)
+        if args.record:
+            save(run_dir, manifest)
+        return rc
+
+    if args.cmd == "final":
+        manifest["finalStatus"] = args.status
+        if args.reason:
+            manifest.setdefault("finalStatusNote", {})["reason"] = args.reason
+        save(run_dir, manifest)
+        print(f"finalStatus -> {args.status}")
         return 0
 
     # set
