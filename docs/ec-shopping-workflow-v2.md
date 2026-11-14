@@ -379,7 +379,7 @@ API 参数
 | 闸门 | 机制 | 脚本 |
 |---|---|---|
 | **审计放行件** | 成员7 产出 `07-audit/approval.json`（`result:pass` + `payload` + `sha256` + `evidence`）；`verify` 把现场 sha 与它对账，且 `08-execution` 未拿到放行件不得置 done | `manifest.py verify [--require-approval]` |
-| **审计锚定（防偷改）** | 团长跑 `anchor`：把 `sha256(approval.json)` 写进 `manifest.approvalSha256` 并追加 `audit/approvals.log`（入 git、带 `prev` 链）；`verify --strict-anchor` 三方比对（payload / approval / 日志）。**日志按 run 分片** `audit/approvals/<runId>.log`（每 run 一条独立链，入 git）：多流程/多机/多分支并行互不干扰；旧全局 `audit/approvals.log` 仅迁移期回退读取 | `manifest.py anchor` + `verify --strict-anchor` |
+| **审计锚定（防偷改）** | 团长跑 `anchor`：把 `sha256(approval.json)` 写进 `manifest.approvalSha256` 并追加 `audit/approvals/<runId>.log`（本机存储、带 `prev` 链）；`verify --strict-anchor` 三方比对（payload / approval / 日志）。**日志按 run 分片** `audit/approvals/<runId>.log`（每 run 一条独立链，**只存本机、不入库**）：多流程/多机/多分支并行互不干扰；旧全局 `audit/approvals.log` 仅迁移期回退读取 | `manifest.py anchor` + `verify --strict-anchor` |
 | **启动/开量/删除硬闸** | 启动前：01~07 done + approval pass + **已锚定**；开量前：G1~G6 全 closed + `user-confirmation.json`；删除前：`delete-confirmation.json` | `gate_check.py --for execute\|unpause\|delete` |
 | **状态机顺序** | `set … done` 强制前置阶段 done + 文件存在；越级需 `--force` 且留痕 | `manifest.py set` |
 | **占位文本** | payload 出现"待核实 / `<...>` / `{{...}}`" 直接 FAIL（base64 正文除外） | `validate_payloads.py` |
