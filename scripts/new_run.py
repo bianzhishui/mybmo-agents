@@ -33,7 +33,6 @@ from pathlib import Path
 from _runbook import STAGES
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STAGE_DIRS = STAGES
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 GITIGNORE_BODY = "*\n!.gitignore\n"
 
@@ -151,11 +150,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         print(f"[dry-run] 将创建 {run_dir}")
-        print(f"[dry-run] 目录：{', '.join(STAGE_DIRS)}")
+        print(f"[dry-run] 目录：{', '.join(STAGES)}")
         print(f"[dry-run] manifest：{json.dumps(manifest, ensure_ascii=False, indent=2)}")
         return 0
 
-    for d in STAGE_DIRS:
+    for d in STAGES:
         (run_dir / d).mkdir(parents=True, exist_ok=True)
 
     gitignore = home / ".gitignore"

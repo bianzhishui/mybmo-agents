@@ -8,8 +8,10 @@
     next                       打印"下一步该谁"（第一个非 done 的阶段）
     object <key> <value>       写 objects 下的键（campaignShoppingId 等）
     final <status>             写 finalStatus（success / success-paused / failed / abandoned），可带 --reason
-                               有未闭环 pendingGates 时拒绝置 success（建议12）
-    gate <id> <status>         改一个人工闸（open / closed），可带 --reason
+                               置 success 需同时满足：pendingGates 全 closed + 07-audit/approval.json
+                               + 08-execution/user-confirmation.json + 已锚定(manifest.approvalSha256 且与 approval 相符)；
+                               --force 跳过以上检查
+    gate <id> <status>         改一个人工闸（open / closed）；置 closed 必须带 --evidence（用户原话/call_id），--force 可跳过
     retry <stage>              记一次重试；超过 3 次拒绝（除非 --force）
     anchor [--approval P] [--log P]   审计锚定：写 manifest.approvalSha256 + 追加 audit/approvals/<runId>.log（prev 链）
     verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256

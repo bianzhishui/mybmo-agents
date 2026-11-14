@@ -361,7 +361,7 @@ mybmo-agents/
 | 机制 | 说明 |
 |---|---|
 | **审计放行件** | 成员7 通过时落 `07-audit/approval.json`（payload + sha256 + pass + evidence）；08 未拿到不得置 done |
-| **审计锚定** | 团长 `manifest.py anchor`：`sha256(approval)` 写入 `manifest.approvalSha256` + `audit/approvals/<runId>.log`（按 run 分片、prev 链、入 git）；`verify --strict-anchor` 三方比对 |
+| **审计锚定** | 团长 `manifest.py anchor`：`sha256(approval)` 写入 `manifest.approvalSha256` + `audit/approvals/<runId>.log`（按 run 分片、prev 链、**本机存储、不入库**）；`verify --strict-anchor` 三方比对 |
 | **人工闸 G1~G6** | `manifest.pendingGates`；开量前 `gate_check --for unpause` 要求全 closed + `user-confirmation.json` |
 | **启动/删除闸** | `gate_check --for execute/delete`（01~07 done + approval pass + 已锚定 / 删除二次确认） |
 | **一键预检** | `scripts/preflight.sh`（validate + verify + lint-files + snapshot_diff + gate_check） |

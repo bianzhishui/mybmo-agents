@@ -50,7 +50,7 @@ run_step() {
   "$@" || fail=1
 }
 
-run_step "1/4 validate_payloads" "$PY" "$ROOT/scripts/validate_payloads.py" "${RUN_ARGS[@]}"
+run_step "1/5 validate_payloads" "$PY" "$ROOT/scripts/validate_payloads.py" "${RUN_ARGS[@]}"
 if [ "$STRICT_ANCHOR" -eq 1 ]; then
   run_step "2/5 manifest verify（strict-anchor）" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify --strict-anchor
 else
@@ -67,10 +67,10 @@ fi
 
 if [ "$SKIP_SNAPSHOT" -eq 1 ]; then
   echo
-  echo "==================== 4/4 snapshot_diff（已跳过）===================="
+  echo "==================== 4/5 snapshot_diff（已跳过）===================="
 else
   echo
-  echo "==================== 4/4 snapshot_diff ===================="
+  echo "==================== 4/5 snapshot_diff ===================="
   if [ "$STRICT_SNAPSHOT" -eq 1 ]; then
     "$PY" "$ROOT/scripts/snapshot_diff.py" "${RUN_ARGS[@]}" --allow-diff --fail-on-unexpected
   else
