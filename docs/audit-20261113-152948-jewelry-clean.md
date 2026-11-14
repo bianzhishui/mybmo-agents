@@ -471,7 +471,7 @@ gantt
 | 项 | 修复落点 | 结论 |
 |---|---|---|
 | 基线模板（建议1 / P0-1·P0-3） | 新增 `templates/campaign-baseline.json`（同账户计划 2387079078 真实读回，call `afd94c95cacd`），⑥ 以骨架替换取值 | userPortrait / interests 不再靠试错发现 |
-| 图片三关（建议2 / P0-2·P0-4） | `scripts/assets_pack.py` 四关硬闸：精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5；**内容红线写明是我方审计口径、非平台拒审** | 960×540、19 张、960×540 均在上传前即拒 |
+| 图片三关（建议2 / P0-2·P0-4） | `scripts/assets_pack.py` 四关硬闸：精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5；**内容红线写明是我方审计口径、非平台拒审** | 960×540、19 张、内容红线=true 均在上传前即拒（exit=1） |
 | schema 必填（建议3 / P0-1·P0-3·P1-8） | `material.required` 加 `userPortrait`；`audience.required` 加 `interests`；`pictures` 标注精确尺寸枚举 + `maxItems:18`；`excludeTrans` enum 补 `"0"` | 仅本地机检生效（`mybmo-mcp` 的 capabilities.json 表达不了 required，未改） |
 | 版本强绑定（建议4 / P1-5） | `scripts/manifest.py verify`：`version == 文件名 .vN` + 将发送文件 sha256 与放行记录对账 | 检出 `04-assets.version=7` vs `image-map.v6.json` 错位、`07-audit.version=2` vs `audit-report.md` |
 | 机检脚本（建议5 / P1-6·P1-7·P1-9） | `validate_payloads.py` 取最新 image-map + userPortrait 分支 + 枚举；`backfill_image_ids.py` 同源取版 + 用 width/height/imageName/signature 精确回填 | 该 run 直接跑 `PASS=14 WARN=1 FAIL=0`，不再需要跑法 B |
