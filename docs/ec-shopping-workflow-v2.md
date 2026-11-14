@@ -367,7 +367,7 @@ API 参数
 | 归档 | 超期移到 `.ecwf/archive/<runId>.tar.gz`（保留 `manifest` + `08-execution/`，丢 `.b64`） |
 | 删除 | 只允许删 `pending` / `rejected` 的 run；`finalStatus=success` 的 run 不自动删 |
 
-归档用 `python3 scripts/archive_runs.py --older-than 30 [--delete] [--dry-run]`：
+归档用 `python3 scripts/archive_runs.py --older-than 30 [--delete] [--dry-run] [--overwrite]`（同名归档默认拒绝覆盖）：
 打包到 `.ecwf/archive/<runId>.tar.gz`、丢 `*.b64`、保留 `manifest.json` + 全部产物；`running` 永不归档/删除。
 
 ---
@@ -380,7 +380,7 @@ API 参数
 |---|---|---|
 | **审计放行件** | 成员7 产出 `07-audit/approval.json`（`result:pass` + `payload` + `sha256` + `evidence`）；`verify` 把现场 sha 与它对账，且 `08-execution` 未拿到放行件不得置 done | `manifest.py verify [--require-approval]` |
 | **审计锚定（防偷改）** | 团长跑 `anchor`：把 `sha256(approval.json)` 写进 `manifest.approvalSha256` 并追加 `audit/approvals.log`（入 git、带 `prev` 链）；`verify --strict-anchor` 三方比对（payload / approval / 日志）。**日志按 run 分片** `audit/approvals/<runId>.log`（每 run 一条独立链，入 git）：多流程/多机/多分支并行互不干扰；旧全局 `audit/approvals.log` 仅迁移期回退读取 | `manifest.py anchor` + `verify --strict-anchor` |
-| **开量/删除硬闸** | 开量前必须 G1~G6 全 closed + `08-execution/user-confirmation.json`；删除前必须 `delete-confirmation.json` | `gate_check.py --for unpause\|delete` |
+| **启动/开量/删除硬闸** | 启动前：01~07 done + approval pass + **已锚定**；开量前：G1~G6 全 closed + `user-confirmation.json`；删除前：`delete-confirmation.json` | `gate_check.py --for execute\|unpause\|delete` |
 | **状态机顺序** | `set … done` 强制前置阶段 done + 文件存在；越级需 `--force` 且留痕 | `manifest.py set` |
 | **占位文本** | payload 出现"待核实 / `<...>` / `{{...}}`" 直接 FAIL（base64 正文除外） | `validate_payloads.py` |
 | **流水防篡改** | `calls.jsonl` 每行带 `prev`（上一行 sha256）与 `account`；链断裂/账户不符即 FAIL | `record_call.py` + `validate_payloads.py` |

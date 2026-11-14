@@ -64,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--older-than", type=int, default=30, help="多少天前（按最新文件 mtime）")
     ap.add_argument("--delete", action="store_true", help="归档后删除原目录（running 永不删）")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--overwrite", action="store_true", help="允许覆盖已存在的归档包（默认拒绝）")
     args = ap.parse_args(argv)
 
     import os
@@ -88,8 +89,13 @@ def main(argv: list[str] | None = None) -> int:
         if oldest_mtime(d) > cutoff:
             print(f"[keep] {d.name} 未到期（{age_days:.1f} 天 < {args.older_than}）status={status}")
             continue
+        target = archive_dir / f"{d.name}.tar.gz"
         if args.dry_run:
-            print(f"[dry-run] 将归档 {d.name}（status={status}, {age_days:.1f} 天）→ {archive_dir / (d.name + '.tar.gz')}")
+            print(f"[dry-run] 将归档 {d.name}（status={status}, {age_days:.1f} 天）→ {target}")
+            continue
+        if target.exists() and not args.overwrite:
+            print(f"[skip] {d.name} 已存在归档 {target.name}（要覆盖加 --overwrite）", file=sys.stderr)
+            rc = 1
             continue
         target, kept, dropped = archive_run(d, archive_dir)
         print(f"[archived] {d.name} -> {target.name}（保留 {kept} 文件，丢 {dropped} 个 .b64）")

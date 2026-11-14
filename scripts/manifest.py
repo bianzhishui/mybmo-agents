@@ -38,23 +38,18 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from _runbook import resolve_run_dir as _resolve_run_dir
+from _runbook import (
+    STAGES,
+    file_version,
+    resolve_run_dir as _resolve_run_dir,
+    strip_version,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # 旧版全局日志（迁移期只读兼容）；新版按 run 分片写 <ANCHOR_DIR>/<runId>.log
 DEFAULT_ANCHOR_LOG = PROJECT_ROOT / "audit" / "approvals.log"
 ANCHOR_DIR = Path(os.environ.get("ECWF_ANCHOR_DIR") or (PROJECT_ROOT / "audit" / "approvals"))
 
-STAGES = [
-    "01-product",
-    "02-keywords",
-    "03-copy",
-    "04-assets",
-    "05-plan",
-    "06-payloads",
-    "07-audit",
-    "08-execution",
-]
 OWNER = {
     "01-product": "成员1",
     "02-keywords": "成员2",
@@ -67,7 +62,6 @@ OWNER = {
 }
 STATUSES = {"pending", "running", "done", "rejected", "frozen"}
 FINAL_STATUSES = {"running", "success", "success-paused", "failed", "abandoned"}
-VERSIONED_RE = re.compile(r"^(?P<stem>.+?)(?:\.v(?P<v>\d+))?\.json$")
 
 
 resolve_run = _resolve_run_dir
@@ -85,12 +79,6 @@ def save(run_dir: Path, manifest: dict) -> None:
     with (run_dir / "manifest.json").open("w", encoding="utf-8") as fh:
         json.dump(manifest, fh, ensure_ascii=False, indent=2)
         fh.write("\n")
-
-
-def file_version(name: str) -> int:
-    """文件名里的版本：`x.json`=1、`x.v7.json`=7。"""
-    m = VERSIONED_RE.match(name)
-    return int(m.group("v")) if (m and m.group("v")) else 1
 
 
 def sha256_of(path: Path) -> str:
@@ -249,7 +237,7 @@ ALLOWED_FILES: dict[str, list[str]] = {
         r"delete-confirmation\.json",
     ],
 }
-VERSION_SUFFIX_RE = re.compile(r"\.v\d+(?=\.[^.]+$)")
+
 
 
 def lint_files(run_dir: Path) -> int:
@@ -277,7 +265,7 @@ def lint_files(run_dir: Path) -> int:
             if m and int(m.group(1)) > 99:
                 problems.append(f"{stage}/{name}: 版本号 {m.group(1)} 过大（上限 99，防止用高版本号制造'唯一执行版'混淆）")
                 continue
-            base = VERSION_SUFFIX_RE.sub("", name)  # 去掉 .vN
+            base = strip_version(name)  # 去掉 .vN
             if any(c.match(name) or c.match(base) for c in compiled):
                 continue
             problems.append(

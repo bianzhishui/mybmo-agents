@@ -22,9 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from _runbook import resolve_run_dir
-
-STAGES = ["01-product", "02-keywords", "03-copy", "04-assets", "05-plan", "06-payloads", "07-audit", "08-execution"]
+from _runbook import STAGES, resolve_run_dir
 
 
 def load(path: Path):
@@ -68,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         not_done = [s for s in STAGES[:7] if stages.get(s, {}).get("status") != "done"]
         if not_done:
             problems.append(f"01~07 未全部 done：{not_done}")
+        if not manifest.get("approvalSha256"):
+            problems.append("未锚定（缺 manifest.approvalSha256；先跑 manifest.py anchor）")
 
     if args.target == "unpause":
         gates = manifest.get("pendingGates") or {}

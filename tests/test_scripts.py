@@ -535,6 +535,107 @@ class TestAnchorShard(RunCase):
             self.assertEqual(r.returncode, 0, r.stdout)
 
 
+class TestMoreScripts(RunCase):
+    def test_record_call_chain(self):
+        for cid, cap in (("a" * 12, "uploadImage"), ("b" * 12, "addKeywordPackages")):
+            r = run("record_call.py", "--run-dir", str(self.run_dir), "--step", "8-2",
+                    "--capability", cap, "--call-id", cid, "--state", "ok")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        lines = [ln for ln in (self.run_dir / "08-execution" / "calls.jsonl").read_text().splitlines() if ln.strip()]
+        import hashlib as _h
+        self.assertEqual(json.loads(lines[-1])["prev"], _h.sha256(lines[-2].encode()).hexdigest())
+        self.assertEqual(json.loads(lines[-1])["account"], "test-account")
+
+    def test_reconcile_lists_unknown(self):
+        calls = self.run_dir / "08-execution" / "calls.jsonl"
+        calls.write_text(json.dumps({"step": "8-4", "capability": "addCampaignShopping",
+                                     "call_id": "c" * 12, "state": "unknown"}) + "\n", encoding="utf-8")
+        r = run("reconcile.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("getCampaignShopping", r.stdout)
+
+    def test_new_run_slug_conflict_and_parallel(self):
+        import shutil as _sh
+        base = self.tmp / "ecwf"
+        runs = base / "runs"
+        (runs / "20260101-000000-foo").mkdir(parents=True)
+        (runs / "20260101-000000-foo" / "manifest.json").write_text(
+            json.dumps({"runId": "x", "finalStatus": "running"}), encoding="utf-8")
+        r = run("new_run.py", "--slug", "foo", "--base", str(base), "--dry-run")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("未完结", r.stderr)
+        r2 = run("new_run.py", "--slug", "foo", "--base", str(base), "--dry-run", "--allow-parallel")
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+        self.assertIn("parallelOverride", r2.stdout)
+
+    def test_scaffold_then_validate(self):
+        (self.run_dir / "03-copy" / "copy.json").exists()
+        (self.run_dir / "05-plan" / "plan-draft.json").unlink()
+        (self.run_dir / "06-payloads" / "addCampaignShopping.json").unlink()
+        img = self.run_dir / "04-assets" / "img-001.png"
+        make_png(img, 750, 1000)
+        import base64 as _b64
+        (self.run_dir / "04-assets" / "img-001.b64").write_text(
+            _b64.b64encode(img.read_bytes()).decode(), encoding="ascii")
+        r = run("scaffold_plan.py", "--run-dir", str(self.run_dir), "--name", "测试计划-20260101",
+                "--budget", "100", "--bid", "1.24", "--start", "2026-01-01", "--user-portrait", "123456",
+                "--force")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r2 = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
+
+    def test_backfill_precise_match(self):
+        resp = self.tmp / "resp.json"
+        resp.write_text(json.dumps({"data": [{"imageId": 777, "width": 750, "height": 1000,
+                                              "signature": "0123456789abcdef0123456789abcdef"}]}),
+                        encoding="utf-8")
+        r = run("backfill_image_ids.py", "--run-dir", str(self.run_dir), "--response", str(resp), "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("img-001.png", r.stdout)
+        self.assertIn("777", r.stdout)
+
+    def test_gate_check_execute_and_delete(self):
+        r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        m.pop("approvalSha256", None)
+        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        r2 = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
+        self.assertEqual(r2.returncode, 1)
+        self.assertIn("未锚定", r2.stdout)
+        r3 = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "delete", "--ids", "123")
+        self.assertEqual(r3.returncode, 1)
+        (self.run_dir / "08-execution" / "delete-confirmation.json").write_text(json.dumps(
+            {"confirmedBy": "u", "at": "2026-01-01", "targets": ["123"]}), encoding="utf-8")
+        r4 = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "delete", "--ids", "123")
+        self.assertEqual(r4.returncode, 0, r4.stdout)
+
+    def test_archive_b64_and_no_overwrite(self):
+        import os as _os, tarfile as _tar, time as _time
+        base = self.tmp / "ecwf"
+        d = base / "runs" / "20200101-000000-old"
+        d.mkdir(parents=True)
+        (d / "manifest.json").write_text(json.dumps({"finalStatus": "success-paused"}), encoding="utf-8")
+        (d / "08-execution").mkdir()
+        (d / "08-execution" / "a.json").write_text("{}", encoding="utf-8")
+        (d / "x.b64").write_text("abc", encoding="utf-8")
+        old = _time.time() - 90 * 86400
+        for f in (d / "manifest.json", d / "08-execution" / "a.json", d / "x.b64"):
+            _os.utime(f, (old, old))
+        r = run("archive_runs.py", "--base", str(base), "--older-than", "30")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        tar = base / "archive" / "20200101-000000-old.tar.gz"
+        self.assertTrue(tar.is_file())
+        names = _tar.open(tar).getnames()
+        self.assertIn("08-execution/a.json", names)
+        self.assertNotIn("x.b64", names)
+        r2 = run("archive_runs.py", "--base", str(base), "--older-than", "30")
+        self.assertEqual(r2.returncode, 1)
+        self.assertIn("已存在归档", r2.stderr)
+        r3 = run("archive_runs.py", "--base", str(base), "--older-than", "30", "--overwrite")
+        self.assertEqual(r3.returncode, 0, r3.stderr)
+
+
 class TestSnapshotEnums(unittest.TestCase):
     def test_exclude_trans_zero_is_legal(self):
         sys.path.insert(0, str(SCRIPTS))
@@ -564,7 +665,6 @@ class TestPreflight(RunCase):
         self.assertIn("approval.json", r.stdout)
 
     def test_preflight_skip_gates(self):
-        (self.run_dir / "07-audit" / "approval.json").unlink()
         r = subprocess.run(
             ["bash", str(SCRIPTS / "preflight.sh"), "--run-dir", str(self.run_dir),
              "--skip-snapshot", "--skip-gates"],

@@ -1,9 +1,0 @@
-{
-  "addImage": true,
-  "items": [
-    {
-      "content": "<纯base64，无 data: 前缀>",
-      "imageName": "<商品名-主图1>"
-    }
-  ]
-}

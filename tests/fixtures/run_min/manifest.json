@@ -43,5 +43,7 @@
     }
   },
   "pendingGates": {},
-  "finalStatus": "running"
+  "finalStatus": "running",
+  "approvalSha256": "48f12e81ff2232474579fd60265da91446d61aeb2089eca69b003d3f99559958",
+  "account": "test-account"
 }

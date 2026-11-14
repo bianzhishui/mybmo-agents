@@ -32,6 +32,10 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+from _runbook import image_map_version as _image_map_version
+from _runbook import pick_latest_image_map as _pick_latest_image_map
+from _runbook import resolve_run_dir as _resolve_run_dir
+
 try:
     from _enums import AUDIENCE_FIELD_ENUMS, check_enum
 except ImportError:  # pragma: no cover - 直接以脚本路径导入时的兜底
@@ -115,21 +119,7 @@ def pick_latest(payload_dir: Path, base: str) -> Path | None:
 
 
 def resolve_run_dir(args: argparse.Namespace) -> Path:
-    if args.run_dir:
-        return Path(args.run_dir).expanduser().resolve()
-    home = Path(os.environ.get("ECWF_HOME", PROJECT_ROOT / ".ecwf"))
-    runs = home / "runs"
-    if not runs.is_dir():
-        raise SystemExit(f"找不到 runs 目录：{runs}（先建 run，或用 --run-dir 指定）")
-    candidates = sorted(p for p in runs.iterdir() if p.is_dir())
-    if args.run:
-        candidate = runs / args.run
-        if not candidate.is_dir():
-            raise SystemExit(f"run 不存在：{candidate}")
-        return candidate
-    if not candidates:
-        raise SystemExit(f"{runs} 下没有任何 run")
-    return candidates[-1]
+    return _resolve_run_dir(args.run, args.run_dir)
 
 
 # --------------------------------------------------------------------------- #
@@ -193,40 +183,9 @@ def iter_image_ids(node: Any, trail: str = "") -> list[tuple[str, Any]]:
     return found
 
 
-IMAGE_MAP_RE = re.compile(r"^image-map(?:\.v(\d+))?\.json$")
-
-
-def _image_map_version(path: Path) -> int:
-    m = IMAGE_MAP_RE.match(path.name)
-    if m:
-        return int(m.group(1) or 1)
-    # 退路：读文件里的 version 字段（有些 run 用 image-map.<ts>.json）
-    try:
-        return int(load_json(path).get("version") or 1)
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        return 1
-
-
-def pick_latest_image_map(run_dir: Path) -> Path | None:
-    """按文件名 .vN（缺失视为 v1）取最新一版 image-map；不存在返回 None。
-
-    历史坑（P1-6）：旧版这里硬编码 `04-assets/image-map.json`（永远 v1），
-    换图后把真实 imageId 判成"编造"，逼得审计用"临时目录把 vN 就位"的跑法 B。
-    现在默认取最新版，也支持 --image-map 显式指定。
-    """
-    assets = run_dir / "04-assets"
-    if not assets.is_dir():
-        return None
-    candidates = [p for p in assets.glob("image-map*.json") if IMAGE_MAP_RE.match(p.name)]
-    if not candidates:
-        fallback = assets / "image-map.json"
-        return fallback if fallback.is_file() else None
-    return max(candidates, key=lambda p: (_image_map_version(p), p.name))
-
-
 def load_image_map(run_dir: Path, explicit: str | None = None) -> tuple[dict[str, Any], str]:
     """返回 ({file: entry}, 来源说明)。file 为 image-map 里的 assets[].file。"""
-    path = Path(explicit).expanduser().resolve() if explicit else pick_latest_image_map(run_dir)
+    path = Path(explicit).expanduser().resolve() if explicit else _pick_latest_image_map(run_dir / "04-assets")
     if path is None or not path.is_file():
         return {}, "（未找到 image-map）"
     try:
@@ -617,77 +576,73 @@ def check_plan_payload_consistency(
     if not plans or not payloads:
         report.warn("05-plan", "⑤ 或 ⑥ 没有 campaignShoppingTypes，跳过一致性检查")
         return
+    if len(plans) != len(payloads):
+        report.fail(
+            "05-plan↔06-payload",
+            f"计划条目数不一致：⑤ {len(plans)} / ⑥ {len(payloads)}（{plan_path.name}）",
+        )
+        return
 
     def norm_pics(c: Any) -> list:
         return (((c or {}).get("material") or {}).get("pictures")) or []
 
-    p_pics = norm_pics(plans[0])
-    y_pics = norm_pics(payloads[0])
-    if len(p_pics) != len(y_pics):
-        report.fail(
-            "05-plan↔06-payload",
-            f"pictures 张数不一致：⑤ {len(p_pics)} 张 / ⑥ {len(y_pics)} 张（{plan_path.name}）",
-        )
-        return
-    if not p_pics:
-        report.warn("05-plan↔06-payload", "pictures 为空，跳过追溯键检查")
-        return
-
-    for i, (pp, yp) in enumerate(zip(p_pics, y_pics)):
-        label = f"traceKey[{i}]"
-        pv = (pp or {}).get("imageId")
-        yv = (yp or {}).get("imageId")
-        pm = PENDING_RE.match(str(pv)) if not isinstance(pv, int) else None
-        expected = None
-        if pm:
-            entry = image_map.get(pm.group(1))
-            if entry is None:
-                report.fail(
-                    label,
-                    f"⑤ {plan_path.name} 的 {pv} 在 {map_label} 里查不到该素材 "
-                    "（编号失效/链断，见 P2-1/P2-4）",
-                )
-                continue
-            expected = entry.get("imageId")
-        elif isinstance(pv, int):
-            expected = pv
-        else:
-            report.fail(label, f"⑤ 的 imageId 既非整数也非 PENDING 占位符：{pv!r}")
+    for ci, (plan_c, pay_c) in enumerate(zip(plans, payloads)):
+        p_pics = norm_pics(plan_c)
+        y_pics = norm_pics(pay_c)
+        if len(p_pics) != len(y_pics):
+            report.fail(
+                f"05-plan↔06-payload[{ci}]",
+                f"pictures 张数不一致：⑤ {len(p_pics)} / ⑥ {len(y_pics)}（{plan_path.name}）",
+            )
             continue
+        if not p_pics:
+            report.warn(f"05-plan↔06-payload[{ci}]", "pictures 为空，跳过追溯键检查")
+            continue
+        for i, (pp, yp) in enumerate(zip(p_pics, y_pics)):
+            label = f"traceKey[{ci}][{i}]"
+            pv = (pp or {}).get("imageId")
+            yv = (yp or {}).get("imageId")
+            pm = PENDING_RE.match(str(pv)) if not isinstance(pv, int) else None
+            expected = None
+            if pm:
+                entry = image_map.get(pm.group(1))
+                if entry is None:
+                    report.fail(
+                        label,
+                        f"⑤ {plan_path.name} 的 {pv} 在 {map_label} 里查不到该素材 "
+                        "（编号失效/链断，见 P2-1/P2-4）",
+                    )
+                    continue
+                expected = entry.get("imageId")
+            elif isinstance(pv, int):
+                expected = pv
+            else:
+                report.fail(label, f"⑤ 的 imageId 既非整数也非 PENDING 占位符：{pv!r}")
+                continue
 
-        if isinstance(yv, int):
-            if isinstance(expected, int) and yv == expected:
-                report.ok(label, f"⑤ {pv} ↔ ⑥ {yv}（经 {map_label} 对齐）")
-            elif expected is None or not isinstance(expected, int):
-                report.warn(
-                    label,
-                    f"⑤ {pv} 对应的素材尚未回填 imageId，⑥ 已是整数 {yv}（可能已手工回填，人工确认）",
-                )
+            if isinstance(yv, int):
+                if isinstance(expected, int) and yv == expected:
+                    report.ok(label, f"⑤ {pv} ↔ ⑥ {yv}（经 {map_label} 对齐）")
+                elif not isinstance(expected, int):
+                    report.warn(
+                        label,
+                        f"⑤ {pv} 对应素材尚未回填 imageId，⑥ 已是整数 {yv}（可能已手工回填，人工确认）",
+                    )
+                else:
+                    report.fail(label, f"⑤ {pv} 对应 imageId={expected}，但 ⑥ 用的是 {yv} —— 追溯键不一致")
             else:
-                report.fail(
-                    label,
-                    f"⑤ {pv} 对应 imageId={expected}，但 ⑥ 用的是 {yv} —— 追溯键不一致",
-                )
-        else:
-            ym = PENDING_RE.match(str(yv))
-            if ym and pm and ym.group(1) == pm.group(1):
-                report.ok(label, f"⑤⑥ 同为 {yv}（均待回填）")
-            else:
-                report.fail(label, f"⑤ 是 {pv!r} 而 ⑥ 是 {yv!r} —— 追溯键不一致")
+                ym = PENDING_RE.match(str(yv))
+                if ym and pm and ym.group(1) == pm.group(1):
+                    report.ok(label, f"⑤⑥ 同为 {yv}（均待回填）")
+                else:
+                    report.fail(label, f"⑤ 是 {pv!r} 而 ⑥ 是 {yv!r} —— 追溯键不一致")
 
 
 VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)\s*mL")
 
 
 def check_required_fields_consistency(run_dir: Path, report: Report) -> None:
-    """建议9 / P2-2：上游产物"自述 vs 事实"对账。
-
-    只查最新一版 01-product/required-fields*.json：
-      1. `userConfirmations.unchangedFields` 里列出的字段，若该字段自身声明"待核实/内容错误/有 usageRule"，
-         说明它其实被更正过，不该再出现在"未变更"清单里；
-      2. `complianceNotesRetained` 里出现的规格数字（如 60mL），必须与 `fields.spec.value` 一致
-         （否则就是 spec 与备注互相矛盾）。
-    """
+    """建议9 / P2-2：上游产物"自述 vs 事实"对账。"""
     path = pick_latest(run_dir / "01-product", "required-fields.json")
     if path is None:
         report.warn("01-product", "找不到 required-fields*.json，跳过自述/事实对账")
@@ -701,15 +656,12 @@ def check_required_fields_consistency(run_dir: Path, report: Report) -> None:
     uc = data.get("userConfirmations") or {}
     problems: list[str] = []
 
-    # 1a) 从"变更日志"里读出真正被改过的字段（自述里的 changesFrom*Reason.changes）
     changed: set[str] = set()
     for key, val in data.items():
         if not key.startswith("changesFrom"):
             continue
         for item in (val or {}).get("changes", []) if isinstance(val, dict) else []:
             changed.update(re.findall(r"fields\.([A-Za-z_]\w*)", str(item)))
-
-    # 1b) 另有硬信号：source 明确写了"内容错误/需实物核实"
     for name, f in fields.items():
         if isinstance(f, dict) and "内容错误" in str(f.get("source") or ""):
             changed.add(name)

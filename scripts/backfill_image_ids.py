@@ -34,35 +34,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from _runbook import resolve_run_dir
+from _runbook import image_map_version, pick_latest_image_map, resolve_run_dir
 
 PENDING_RE = re.compile(r"^PENDING:(.+)$")
-IMAGE_MAP_RE = re.compile(r"^image-map(?:\.v(\d+))?\.json$")
-
-
-def load_json(path: Path) -> Any:
+def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def image_map_version(path: Path) -> int:
-    m = IMAGE_MAP_RE.match(path.name)
-    if m:
-        return int(m.group(1) or 1)
-    try:
-        return int(load_json(path).get("version") or 1)
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        return 1
-
-
-def pick_latest_image_map(run_dir: Path) -> Path:
-    assets = run_dir / "04-assets"
-    candidates = [p for p in assets.glob("image-map*.json") if IMAGE_MAP_RE.match(p.name)] if assets.is_dir() else []
-    if not candidates:
-        fallback = assets / "image-map.json"
-        if not fallback.is_file():
-            raise SystemExit(f"缺 {fallback}（先跑 scripts/assets_pack.py）")
-        return fallback
-    return max(candidates, key=lambda p: (image_map_version(p), p.name))
 
 
 def find_pairs(node: Any) -> list[dict[str, Any]]:
@@ -168,7 +144,9 @@ def main(argv: list[str] | None = None) -> int:
         print("响应里没找到任何 imageId——检查是不是 uploadImage 的返回值", file=sys.stderr)
         return 2
 
-    map_path = Path(args.image_map).expanduser() if args.image_map else pick_latest_image_map(run_dir)
+    map_path = Path(args.image_map).expanduser() if args.image_map else pick_latest_image_map(run_dir / "04-assets")
+    if map_path is None:
+        raise SystemExit(f"缺 04-assets/image-map*.json（先跑 scripts/assets_pack.py）")
     if not map_path.is_file():
         print(f"缺映射表：{map_path}", file=sys.stderr)
         return 2
