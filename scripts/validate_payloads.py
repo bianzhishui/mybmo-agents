@@ -32,7 +32,6 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from _runbook import image_map_version as _image_map_version
 from _runbook import pick_latest_image_map as _pick_latest_image_map
 from _runbook import resolve_run_dir as _resolve_run_dir
 

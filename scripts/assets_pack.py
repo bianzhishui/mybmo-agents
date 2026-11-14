@@ -48,7 +48,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from _enums import MAX_PICTURES, PICTURES_ALLOWED_SIZES, PICTURES_ALLOWED_SIZES_LIVE_ONLY
+from _enums import MAX_PICTURES, PICTURES_ALLOWED_SIZES
 from _runbook import resolve_run_dir
 
 MAX_PER_IMAGE = 10 * 1024 * 1024   # 单张 10MB

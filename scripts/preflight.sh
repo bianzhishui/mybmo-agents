@@ -9,11 +9,11 @@
 #   --strict-snapshot 非预期字段差异即 FAIL（推荐 ⑧-6 用）
 #
 # 依次执行：
-#   1) validate_payloads.py  —— schema / 占位符 / imageId 追溯 / 业务枚举 / ⑤↔⑥ / 尺寸 / 自述对账
+#   1) validate_payloads.py  —— schema / 占位文本 / imageId 追溯 / 图片尺寸 / 业务枚举 / ⑤↔⑥ / 自述对账 / calls 链与账户 / 审计取证
 #   2) manifest.py verify    —— version==文件名 .vN、将发送文件 sha256 与放行记录对账、未闭环人工闸
 #   3) manifest.py lint-files—— 文件名封闭清单（§1.1）
 #   4) snapshot_diff.py      —— 有 before/after 时才跑（只读比对，差异不阻断；缺文件则跳过）
-#   5) gate_check.py --for execute —— 01~07 done + 审计放行件 pass（默认；--skip-gates 跳过）
+#   5) gate_check.py --for execute —— 01~07 done + 审计放行件 pass + 已锚定（默认；--skip-gates 跳过）
 #
 # 退出码：0 全过 / 1 有 FAIL / 2 用法错。
 set -u
