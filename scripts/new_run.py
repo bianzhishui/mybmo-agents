@@ -30,17 +30,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from _runbook import STAGES
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STAGE_DIRS = [
-    "01-product",
-    "02-keywords",
-    "03-copy",
-    "04-assets",
-    "05-plan",
-    "06-payloads",
-    "07-audit",
-    "08-execution",
-]
+STAGE_DIRS = STAGES
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 GITIGNORE_BODY = "*\n!.gitignore\n"
 

@@ -636,6 +636,31 @@ class TestMoreScripts(RunCase):
         self.assertEqual(r3.returncode, 0, r3.stderr)
 
 
+class TestFinalGaps(RunCase):
+    def test_set_rejects_file_escape(self):
+        self.write_manifest({})
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "set", "01-product", "done",
+                "--file", "../../etc/hosts", "--force")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("越界", r.stderr)
+
+    def test_assets_pack_writes_map_and_b64(self):
+        img = self.tmp / "new.png"
+        make_png(img, 750, 1000)
+        att = self.tmp / "att.json"
+        att.write_text(json.dumps({"new.png": {"aiWatermark": False, "beforeAfter": False,
+                                               "absoluteClaims": False, "by": "m4"}}), encoding="utf-8")
+        r = run("assets_pack.py", "--from", str(img), "--run-dir", str(self.run_dir),
+                "--content-attest", str(att))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        files = {p.name for p in (self.run_dir / "04-assets").iterdir()}
+        self.assertIn("img-002.png", files)
+        self.assertIn("img-002.b64", files)
+        m = self.load("04-assets/image-map.json")
+        self.assertEqual(m["assets"][-1]["width"], 750)
+        self.assertIsNone(m["assets"][-1]["imageId"])
+
+
 class TestSnapshotEnums(unittest.TestCase):
     def test_exclude_trans_zero_is_legal(self):
         sys.path.insert(0, str(SCRIPTS))

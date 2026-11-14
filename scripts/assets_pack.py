@@ -48,22 +48,14 @@ import sys
 import unicodedata
 from pathlib import Path
 
+from _enums import MAX_PICTURES, PICTURES_ALLOWED_SIZES, PICTURES_ALLOWED_SIZES_LIVE_ONLY
 from _runbook import resolve_run_dir
 
 MAX_PER_IMAGE = 10 * 1024 * 1024   # 单张 10MB
 MAX_BATCH = 10 * 1024 * 1024       # 整批 10MB
 MAX_COUNT = 20                     # uploadImage 单次 20 张（接口上限）
-MAX_PICTURES = 18                  # 建创意时 pictures 张数上限（服务端拦）
 MAX_NAME_WIDTH = 200               # imageName 上限，1 汉字算 2
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
-
-# ① 精确宽高白名单、方向固定（不是宽高比，也不是最小尺寸）
-PICTURES_ALLOWED_SIZES = {
-    (370, 245),    # 横幅
-    (1140, 640),   # 横幅（商品推广 + 自定义直播推广共用）
-    (750, 1000),   # 竖版 3:4
-}
-PICTURES_ALLOWED_SIZES_LIVE_ONLY = {(1140, 640)}  # 自定义直播推广 only
 
 # ③ 内容红线（我方审计口径，平台不拦）
 CONTENT_RED_LINES = [

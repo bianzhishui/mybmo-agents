@@ -37,12 +37,12 @@ from _runbook import pick_latest_image_map as _pick_latest_image_map
 from _runbook import resolve_run_dir as _resolve_run_dir
 
 try:
-    from _enums import AUDIENCE_FIELD_ENUMS, check_enum
+    from _enums import AUDIENCE_FIELD_ENUMS, PICTURES_ALLOWED_SIZES, check_enum
 except ImportError:  # pragma: no cover - 直接以脚本路径导入时的兜底
     import sys as _sys
 
     _sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _enums import AUDIENCE_FIELD_ENUMS, check_enum
+    from _enums import AUDIENCE_FIELD_ENUMS, PICTURES_ALLOWED_SIZES, check_enum
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = PROJECT_ROOT / "schemas"
@@ -374,7 +374,7 @@ def check_picture_dimensions(run_dir: Path, payloads: dict[str, Any], report: Re
     by_id = {
         a.get("imageId"): a for a in image_map.values() if isinstance(a.get("imageId"), int)
     }
-    allowed = {(370, 245), (1140, 640), (750, 1000)}
+    allowed = PICTURES_ALLOWED_SIZES
     payload = payloads.get("addCampaignShopping.json")
     if not isinstance(payload, dict):
         return

@@ -650,6 +650,11 @@ def main(argv: list[str] | None = None) -> int:
         print("status=rejected 必须同时给 --reason 与 --retry-to", file=sys.stderr)
         return 1
 
+    # 任何情况下 --file 都必须落在 run 目录内（防止把外部路径写进 manifest）
+    if args.file and within(run_dir, args.file) is None:
+        print(f"拒绝：--file 路径越界 {args.file!r}", file=sys.stderr)
+        return 1
+
     # H4：推进到 done 前，前置阶段必须 done、文件必须存在；08 还需 07 done + 审计放行件
     if args.status == "done" and not args.force:
         idx = STAGES.index(args.stage)
@@ -660,6 +665,9 @@ def main(argv: list[str] | None = None) -> int:
         recorded_file = args.file or manifest.get("stages", {}).get(args.stage, {}).get("file")
         if not recorded_file:
             print(f"拒绝置 {args.stage} done：未指定产出文件（--file 或 manifest 已有 file）", file=sys.stderr)
+            return 1
+        if within(run_dir, recorded_file) is None:
+            print(f"拒绝置 done：文件路径越界 {recorded_file!r}", file=sys.stderr)
             return 1
         if not (run_dir / recorded_file).is_file():
             print(f"拒绝置 done：文件不存在 {recorded_file}", file=sys.stderr)
