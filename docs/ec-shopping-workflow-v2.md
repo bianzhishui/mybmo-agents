@@ -379,6 +379,7 @@ API 参数
 | 闸门 | 机制 | 脚本 |
 |---|---|---|
 | **审计放行件** | 成员7 产出 `07-audit/approval.json`（`result:pass` + `payload` + `sha256` + `evidence`）；`verify` 把现场 sha 与它对账，且 `08-execution` 未拿到放行件不得置 done | `manifest.py verify [--require-approval]` |
+| **审计锚定（防偷改）** | 团长跑 `anchor`：把 `sha256(approval.json)` 写进 `manifest.approvalSha256` 并追加 `audit/approvals.log`（入 git、带 `prev` 链）；`verify --strict-anchor` 三方比对（payload / approval / 日志） | `manifest.py anchor` + `verify --strict-anchor` |
 | **开量/删除硬闸** | 开量前必须 G1~G6 全 closed + `08-execution/user-confirmation.json`；删除前必须 `delete-confirmation.json` | `gate_check.py --for unpause\|delete` |
 | **状态机顺序** | `set … done` 强制前置阶段 done + 文件存在；越级需 `--force` 且留痕 | `manifest.py set` |
 | **占位文本** | payload 出现"待核实 / `<...>` / `{{...}}`" 直接 FAIL（base64 正文除外） | `validate_payloads.py` |
@@ -390,6 +391,7 @@ API 参数
 | **系统文件** | `.DS_Store` 等点文件不参与文件名校验 | `manifest.py lint-files` |
 
 `preflight.sh` **默认**就包含 `gate_check --for execute`（审计放行件缺失即 FAIL）；只在做半成品自检时用 `--skip-gates`。
+⑧ 侧建议加 `--strict-anchor`：锚定缺失或日志链断裂即 FAIL。
 
 ## 六、产出物模板
 

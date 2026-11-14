@@ -362,6 +362,60 @@ class TestHardening(RunCase):
         self.assertNotIn("fcKeywordWtpids", out)
 
 
+class TestAnchor(RunCase):
+    def _anchor(self):
+        log = self.tmp / "approvals.log"
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
+        return log, r
+
+    def test_anchor_then_strict_verify(self):
+        log, r = self._anchor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
+                 "--strict-anchor", "--log", str(log))
+        self.assertEqual(r2.returncode, 0, r2.stdout)
+        self.assertIn("三方一致", r2.stdout)
+
+    def test_strict_verify_without_anchor(self):
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
+                "--strict-anchor", "--log", str(self.tmp / "none.log"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("缺锚定", r.stdout)
+
+    def test_payload_swapped_after_anchor(self):
+        log, r = self._anchor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        p = self.load("06-payloads/addCampaignShopping.json")
+        p["campaignShoppingTypes"][0]["campaignShoppingName"] = "被偷换的计划名"
+        self.save("06-payloads/addCampaignShopping.json", p)
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
+                 "--strict-anchor", "--log", str(log))
+        self.assertEqual(r2.returncode, 1)
+        self.assertIn("锚定", r2.stdout)
+
+    def test_approval_tampered_after_anchor(self):
+        log, r = self._anchor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        ap = self.load("07-audit/approval.json")
+        ap["evidence"] = ["forged"]
+        self.save("07-audit/approval.json", ap)
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
+                 "--strict-anchor", "--log", str(log))
+        self.assertEqual(r2.returncode, 1)
+        self.assertIn("approval.json 与 manifest 不符", r2.stdout)
+
+    def test_log_chain_broken(self):
+        log, r = self._anchor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = log.read_text(encoding="utf-8").splitlines()
+        row = json.loads(lines[0]); row["prev"] = "deadbeef"; lines[0] = json.dumps(row, ensure_ascii=False)
+        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
+                 "--strict-anchor", "--log", str(log))
+        self.assertEqual(r2.returncode, 1)
+        self.assertIn("日志链断裂", r2.stdout)
+
+
 class TestSnapshotEnums(unittest.TestCase):
     def test_exclude_trans_zero_is_legal(self):
         sys.path.insert(0, str(SCRIPTS))

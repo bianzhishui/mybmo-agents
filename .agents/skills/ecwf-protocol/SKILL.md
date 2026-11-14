@@ -153,6 +153,8 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 ## 6. 审计与打回
 
 - 审计结论只有两种：`通过` / `打回给成员X，具体问题：…`
+- 结论为"通过"后，**团长**跑 `manifest.py anchor` 把 `sha256(approval.json)` 锚进 `manifest` 与 `audit/approvals.log`（入 git）；
+  08 侧 `verify --strict-anchor` 做三方比对（payload / approval / 日志链）。
 - 结论为"通过"时**必须**落 `07-audit/approval.json`（payload + sha256 + result:pass + evidence），
   08 侧 `manifest.py verify --require-approval` 会对账；没有放行件不得置 `08-execution done`。
 - **取证纪律**：凡"机审通过""用户确认"这类断言，必须给可复现的 `call_id` / 用户原话；
@@ -165,7 +167,7 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | 脚本 | 用途 |
 |---|---|
 | `scripts/new_run.py` | 建 run 目录、`.ecwf/.gitignore`、`manifest.json` |
-| `scripts/manifest.py` | 读/改 stages 状态；`verify` 校验「version↔文件名 .vN」+ 将发送文件 sha256 对账；`final` 写 finalStatus（含 `abandoned`，未闭环人工闸不许置 success）；`gate` 收口人工闸；`lint-files` 校验文件名封闭清单 |
+| `scripts/manifest.py` | 读/改 stages 状态；`anchor` 审计锚定（manifest.approvalSha256 + `audit/approvals.log` 链）；`verify` 校验「version↔文件名 .vN」+ 将发送文件 sha256 对账；`final` 写 finalStatus（含 `abandoned`，未闭环人工闸不许置 success）；`gate` 收口人工闸；`lint-files` 校验文件名封闭清单 |
 | `scripts/record_call.py` | 追加 `calls.jsonl` 一行 |
 | `scripts/make_baseline.py` | 从 `getCampaignShopping` 读回文件生成账户参数骨架（不调接口） |
 | `scripts/scaffold_plan.py` | 从 baseline + ①②③④ 生成 ⑤⑥ 初稿（plan-draft / 三份 payload） |
