@@ -450,6 +450,33 @@ class TestAnchorShard(RunCase):
         self.assertEqual(r2.returncode, 0, r2.stdout)
         self.assertIn("三方一致", r2.stdout)
 
+    def test_anchor_rejects_payload_outside_run(self):
+        ap = self.load("07-audit/approval.json")
+        ap["payload"] = "../../outside.json"
+        self.save("07-audit/approval.json", ap)
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
+                "--log", str(self.tmp / "l.log"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("越界", r.stderr)
+
+    def test_anchor_rejects_payload_name_mismatch(self):
+        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        m["stages"]["06-payloads"]["file"] = "06-payloads/addKeywordPackages.json"
+        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
+                "--log", str(self.tmp / "l.log"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("≠ manifest 06-payloads", r.stderr)
+
+    def test_verify_rejects_stage_path_escape(self):
+        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        m["stages"]["01-product"]["file"] = "../../etc/hosts"
+        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
+                "--log", str(self.tmp / "l.log"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("路径越界", r.stdout)
+
     def test_unsafe_run_id_does_not_escape_anchor_dir(self):
         m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
         m["runId"] = "../../evil"

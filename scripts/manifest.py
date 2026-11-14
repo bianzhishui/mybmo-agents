@@ -140,8 +140,12 @@ def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool =
         rel = entry.get("file")
         if not rel:
             continue
-        path = run_dir / rel
+        path = within(run_dir, rel)
         declared = entry.get("version")
+        if path is None:
+            fails.append(f"{stage}: 文件路径越界 {rel!r}")
+            print(f"[FAIL] {stage:12} 文件路径越界 {rel!r}")
+            continue
         if not path.is_file():
             fails.append(f"{stage}: manifest 指向的 {rel} 不存在")
             print(f"[FAIL] {stage:12} 文件缺失 {rel}")
@@ -292,6 +296,16 @@ def lint_files(run_dir: Path) -> int:
 SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
 
 
+def within(base: Path, rel: str) -> Path | None:
+    """把 rel 解析到 base 内；越界（../、绝对路径）返回 None。"""
+    try:
+        p = (base / rel).resolve()
+        p.relative_to(base.resolve())
+        return p
+    except (ValueError, OSError):
+        return None
+
+
 def safe_run_id(run_dir: Path, manifest: dict) -> str:
     rid = str(manifest.get("runId") or run_dir.name)
     if SAFE_RUN_ID_RE.match(rid) and ".." not in rid:
@@ -357,7 +371,10 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path |
     if manifest.get("stages", {}).get("07-audit", {}).get("status") != "done":
         print("拒绝锚定：07-audit 尚未 done", file=sys.stderr)
         return 1
-    approval_path = run_dir / approval_rel
+    approval_path = within(run_dir, approval_rel)
+    if approval_path is None:
+        print(f"拒绝锚定：approval 路径越界 {approval_rel!r}", file=sys.stderr)
+        return 1
     if not approval_path.is_file():
         print(f"缺审计放行件：{approval_path}", file=sys.stderr)
         return 1
@@ -367,9 +384,16 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path |
         print("approval.json 不是合法 JSON", file=sys.stderr)
         return 1
     payload_rel = str(approval.get("payload") or "")
-    payload_path = run_dir / payload_rel
-    if not payload_rel or not payload_path.is_file():
+    payload_path = within(run_dir, payload_rel) if payload_rel else None
+    if payload_path is None:
+        print(f"拒绝锚定：approval.payload 路径越界 {payload_rel!r}", file=sys.stderr)
+        return 1
+    if not payload_path.is_file():
         print(f"approval.payload 指向的文件不存在：{payload_rel!r}", file=sys.stderr)
+        return 1
+    stage06 = manifest.get("stages", {}).get("06-payloads", {}).get("file")
+    if stage06 and Path(stage06).name != payload_path.name:
+        print(f"拒绝锚定：approval.payload={payload_path.name} ≠ manifest 06-payloads={Path(stage06).name}", file=sys.stderr)
         return 1
     if approval.get("result") != "pass":
         print(f"拒绝锚定：approval.result={approval.get('result')!r}（只有 pass 可锚）", file=sys.stderr)
@@ -443,8 +467,11 @@ def verify_anchor(run_dir: Path, manifest: dict, log_path: Path, strict: bool,
         fails.append("锚定失败：approval.json 解析失败")
         return
     payload_rel = str(approval.get("payload") or "")
-    payload_path = run_dir / payload_rel
-    if not payload_rel or not payload_path.is_file():
+    payload_path = within(run_dir, payload_rel) if payload_rel else None
+    if payload_path is None:
+        print(f"拒绝锚定：approval.payload 路径越界 {payload_rel!r}", file=sys.stderr)
+        return 1
+    if not payload_path.is_file():
         fails.append(f"锚定失败：approval.payload 不存在 {payload_rel!r}")
         print(f"[FAIL] 锚定：approval.payload 不存在 {payload_rel!r}")
         return
