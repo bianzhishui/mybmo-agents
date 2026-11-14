@@ -210,8 +210,7 @@ def lint_files(run_dir: Path) -> int:
     for stage, patterns in ALLOWED_FILES.items():
         d = run_dir / stage
         if not d.is_dir():
-            problems.append(f"{stage}: 目录缺失")
-            continue
+            continue  # 早期 run 可能还没建到这一步；只检查已存在的目录
         compiled = [re.compile("^" + pat + "$") for pat in patterns]
         for f in sorted(d.iterdir()):
             if f.is_dir():

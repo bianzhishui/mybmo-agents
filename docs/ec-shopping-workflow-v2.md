@@ -276,13 +276,16 @@ API 参数
 ├── 04-assets/                 # 成员4
 │   ├── img-001.png            #   原图（不可再生，必留）
 │   ├── img-001.b64            #   base64（可再生，可缓存）
-│   └── image-map.json         #   文件名 → imageName → 创意 → 回填 imageId
+│   ├── image-map.json         #   文件名 → imageName → 创意 → 回填 imageId
+│   └── image-map.v2.json      #   改版一律 .vN，禁止原地覆盖（v3…v6 同理）
 ├── 05-plan/                   # 成员5
 │   └── plan-draft.json        #   计划结构草案（imageId 为占位符）
 ├── 06-payloads/               # 成员6
 │   ├── addKeywordPackages.json
 │   ├── uploadImage.json
-│   └── addCampaignShopping.json
+│   ├── addCampaignShopping.json
+│   ├── addCampaignShopping.v2.json   # 改版 .vN；_notes.json 记改因与溯源
+│   └── _notes.json                   # 下划线前缀＝辅助文件（_draft.md / _*-response.json 同）
 ├── 07-audit/                  # 成员7
 │   └── audit-report.md        #   六层清单 + 结论
 └── 08-execution/              # 成员8

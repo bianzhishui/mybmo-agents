@@ -1,0 +1,17 @@
+{
+  "titles": [
+    {
+      "text": "这是一个合规的测试标题"
+    }
+  ],
+  "descriptions": [
+    {
+      "text": "这是一段合规的测试描述文本"
+    }
+  ],
+  "forbiddenCheck": {
+    "passed": true,
+    "hitWords": []
+  },
+  "by": "成员3"
+}

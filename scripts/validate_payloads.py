@@ -95,11 +95,15 @@ def disp_width(text: str) -> int:
 
 
 def pick_latest(payload_dir: Path, base: str) -> Path | None:
-    """同名文件取最高版本：`x.json` < `x.v2.json` < `x.v3.json`（冻结不改写的产物用 .vN 落盘）。"""
-    stem = base[: -len(".json")]
-    versioned = re.compile(rf"^{re.escape(stem)}(?:\.v(\d+))?\.json$")
+    """同名文件取最高版本：`x.json` < `x.v2.json` < `x.v3.json`（冻结不改写的产物用 .vN 落盘）。
+
+    支持任意扩展名（`base` 可为 `audit-report.md` / `required-fields.json`）。
+    """
+    suffix = Path(base).suffix
+    stem = base[: -len(suffix)] if suffix else base
+    versioned = re.compile(rf"^{re.escape(stem)}(?:\.v(\d+))?{re.escape(suffix)}$")
     best: tuple[int, Path] | None = None
-    for p in payload_dir.glob(f"{stem}*.json"):
+    for p in payload_dir.glob(f"{stem}*{suffix}"):
         m = versioned.match(p.name)
         if m is None:
             continue
@@ -468,6 +472,39 @@ def check_execution_artifacts(run_dir: Path, report: Report) -> None:
             report.ok("08-execution/calls.jsonl", "每行都有 call_id")
 
 
+CALL_ID_RE = re.compile(r"\b[0-9a-f]{12}\b")
+EVIDENCE_RE = re.compile(r"机审通过|用户确认|已通过机审|审核通过")
+
+
+def check_audit_evidence(run_dir: Path, report: Report) -> None:
+    """建议11：审计报告里"机审通过/用户确认"这类断言必须给可复现 call_id 或原话。
+
+    只做 WARN（审计是散文，硬 FAIL 会误伤）；列出缺证据的行，供审计官自查。
+    """
+    path = pick_latest(run_dir / "07-audit", "audit-report.md")
+    if path is None:
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        report.warn("07-audit", f"读取失败：{exc}")
+        return
+    misses: list[str] = []
+    for i, line in enumerate(lines):
+        if not EVIDENCE_RE.search(line):
+            continue
+        ctx = line + " " + (lines[i - 1] if i > 0 else "")
+        if not CALL_ID_RE.search(ctx):
+            misses.append(f"第{i + 1}行：{line.strip()[:60]}")
+    if misses:
+        report.warn(
+            "07-audit/取证",
+            f"{len(misses)} 处'机审通过/用户确认'类断言附近无 call_id（示例：{misses[0]}）",
+        )
+    else:
+        report.ok("07-audit/取证", "取证断言均带 call_id")
+
+
 def check_plan_payload_consistency(
     payload: Any, run_dir: Path, report: Report, explicit_map: str | None = None
 ) -> None:
@@ -671,6 +708,7 @@ def main(argv: list[str] | None = None) -> int:
     check_plan_payload_consistency(
         payloads.get("addCampaignShopping.json"), run_dir, report, args.image_map
     )
+    check_audit_evidence(run_dir, report)
     check_copy_forbidden(run_dir, report)
     check_required_fields_consistency(run_dir, report)
     check_picture_dimensions(run_dir, payloads, report, args.image_map)

@@ -1,0 +1,62 @@
+{
+  "campaignShoppingTypes": [
+    {
+      "campaignShoppingName": "测试计划-20260101",
+      "pause": true,
+      "targetType": 1,
+      "eshopType": 1,
+      "productId": "1000000001",
+      "productName": "测试商品",
+      "campaignType": 1,
+      "budget": 0,
+      "ocpcBid": 0.2,
+      "transType": 14,
+      "ideaType": 1,
+      "startTime": "2026-01-01",
+      "endTime": "9999-01-01",
+      "schedule": [
+        {
+          "weekDay": 1,
+          "startHour": 0,
+          "endHour": 24
+        }
+      ],
+      "audience": {
+        "regionType": "0",
+        "region": "9999999",
+        "sex": "0",
+        "age": "0",
+        "customAge": "0",
+        "interests": "0",
+        "crowd": "0",
+        "etradecrowds": "0",
+        "excludeCrowd": "",
+        "excludeTrans": "0",
+        "keywords": "词一,词二",
+        "keywordsExtend": "1",
+        "intelligentWeight": "1"
+      },
+      "material": {
+        "brand": "某品牌",
+        "userPortrait": {
+          "imageId": 123456
+        },
+        "title": [
+          {
+            "text": "这是一个合规的测试标题"
+          }
+        ],
+        "description": [
+          {
+            "text": "这是一段合规的测试描述文本"
+          }
+        ],
+        "pictures": [
+          {
+            "imageId": "PENDING:img-001.png"
+          }
+        ]
+      }
+    }
+  ]
+}

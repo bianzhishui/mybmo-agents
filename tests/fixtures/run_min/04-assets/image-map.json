@@ -1,0 +1,13 @@
+{
+  "assets": [
+    {
+      "file": "img-001.png",
+      "base64File": "img-001.b64",
+      "imageName": "测试-主图1",
+      "imageId": 123456,
+      "md5": "0123456789abcdef0123456789abcdef",
+      "width": 750,
+      "height": 1000
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "campaignShoppingTypes": [
+    {
+      "campaignShoppingName": "测试计划-20260101",
+      "material": {
+        "brand": "某品牌",
+        "pictures": [
+          {
+            "imageId": "PENDING:img-001.png"
+          }
+        ]
+      }
+    }
+  ]
+}

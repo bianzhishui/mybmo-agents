@@ -1,0 +1,13 @@
+{
+  "keywordPackageTypes": [
+    {
+      "packageName": "场景词-测试",
+      "keywordTypes": [
+        {
+          "keyword": "测试词一",
+          "id": 0
+        }
+      ]
+    }
+  ]
+}

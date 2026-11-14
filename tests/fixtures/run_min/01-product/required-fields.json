@@ -1,0 +1,25 @@
+{
+  "fields": {
+    "spec": {
+      "value": "待核实",
+      "source": "待核实"
+    },
+    "brand": {
+      "value": "某品牌",
+      "source": "用户提供"
+    },
+    "productId": {
+      "value": "1000000001",
+      "source": "接口实测"
+    }
+  },
+  "userConfirmations": {
+    "unchangedFields": [
+      "brand",
+      "productId"
+    ],
+    "complianceNotesRetained": [
+      "不得使用绝对化用语"
+    ]
+  }
+}

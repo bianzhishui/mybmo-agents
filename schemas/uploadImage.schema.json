@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "uploadImage.schema.json",
   "title": "ImageManageService.uploadImage 请求体",
-  "description": "来源：mybmo-mcp 能力实测（2026-11-11）。productLine / needMola 接口不认，禁止传入。",
+  "description": "来源：mybmo-mcp 能力实测（2026-11-11）。productLine / needMola 接口不认，禁止传入。整请求体 ≤10MB（base64 编码后）；单批 ≤20 张。真正能否用于创意还受 pictures 尺寸/张数约束（见 addCampaignShopping.schema.json 的 x-platform-allowedSizes）——**上传成功 ≠ 尺寸合规**。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,7 @@
       "type": "array",
       "minItems": 1,
       "maxItems": 20,
-      "description": "单批 ≤20 张；整请求体 ≤10MB",
+      "description": "单批 ≤20 张；整个请求体 ≤10MB（base64 后，机器校验由 scripts/assets_pack.py 做）",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -36,14 +36,17 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "description": "1 个汉字算 2 字符"
+            "description": "imageName 上限：显示宽度 ≤200（1 个汉字算 2，即纯中文最多 100 字）",
+            "x-maxDisplayWidth": 200
           },
           "imgmd5": {
             "type": "string",
             "pattern": "^[a-fA-F0-9]{32}$"
           }
         }
-      }
+      },
+      "x-maxCount": 20,
+      "x-maxBatchBytes": 10485760
     }
   }
 }

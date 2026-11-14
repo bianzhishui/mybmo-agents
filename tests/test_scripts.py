@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""脚本回归测试（标准库 unittest，不引入 pytest）。
+
+运行：
+    .venv/bin/python -m unittest discover -s tests -v
+    .venv/bin/python tests/test_scripts.py
+
+设计：每个用例都在临时目录里复制 `tests/fixtures/run_min`（一份最小可过机检的 run），
+只改一处再断言——把这几轮手工验证过的正反例固化下来，防止以后改脚本悄悄失效。
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+import zlib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE = ROOT / "tests" / "fixtures" / "run_min"
+PY = sys.executable
+SCRIPTS = ROOT / "scripts"
+
+
+def run(script: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [PY, str(SCRIPTS / script), *args], capture_output=True, text=True
+    )
+
+
+def make_png(path: Path, w: int, h: int) -> None:
+    raw = b"".join(b"\x00" + bytes([120, 140, 110]) * w for _ in range(h))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+class RunCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ecwf-test-"))
+        self.run_dir = self.tmp / "run"
+        shutil.copytree(FIXTURE, self.run_dir)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    # -- 工具 --------------------------------------------------------------- #
+    def load(self, rel: str):
+        return json.loads((self.run_dir / rel).read_text(encoding="utf-8"))
+
+    def save(self, rel: str, obj) -> None:
+        (self.run_dir / rel).write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def write_manifest(self, stages: dict, gates: dict | None = None) -> None:
+        m = {"runId": "test", "stages": stages, "finalStatus": "running"}
+        if gates is not None:
+            m["pendingGates"] = gates
+        (self.run_dir / "manifest.json").write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+
+
+class TestValidate(RunCase):
+    def test_base_pass(self):
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("PASS", r.stdout)
+
+    def test_region_not_a_geo_code(self):
+        p = self.load("06-payloads/addCampaignShopping.json")
+        p["campaignShoppingTypes"][0]["audience"]["region"] = "全国"
+        self.save("06-payloads/addCampaignShopping.json", p)
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不是地域码", r.stdout)
+
+    def test_trace_key_broken(self):
+        p = self.load("05-plan/plan-draft.json")
+        p["campaignShoppingTypes"][0]["material"]["pictures"][0]["imageId"] = "PENDING:img-404.png"
+        self.save("05-plan/plan-draft.json", p)
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("查不到该素材", r.stdout)
+
+    def test_missing_before_snapshot(self):
+        (self.run_dir / "08-execution/before-snapshot.json").unlink()
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("before-snapshot.json", r.stdout)
+
+    def test_dimension_not_in_whitelist(self):
+        m = self.load("04-assets/image-map.json")
+        m["assets"][0]["width"], m["assets"][0]["height"] = 800, 800
+        self.save("04-assets/image-map.json", m)
+        p = self.load("06-payloads/addCampaignShopping.json")
+        p["campaignShoppingTypes"][0]["material"]["pictures"][0]["imageId"] = 123456
+        self.save("06-payloads/addCampaignShopping.json", p)
+        q = self.load("05-plan/plan-draft.json")
+        q["campaignShoppingTypes"][0]["material"]["pictures"][0]["imageId"] = "PENDING:img-001.png"
+        self.save("05-plan/plan-draft.json", q)
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不在精确白名单", r.stdout)
+
+    def test_self_description_contradiction(self):
+        f = self.load("01-product/required-fields.json")
+        f["changesFromV2Reason"] = {"changes": ["fields.spec：更正为待核实"]}
+        f["userConfirmations"]["unchangedFields"].append("spec")
+        self.save("01-product/required-fields.json", f)
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不该出现在『未变更』清单里", r.stdout)
+
+
+class TestAssetsPack(RunCase):
+    def _attest(self, names, **flags):
+        data = {n: {"aiWatermark": False, "beforeAfter": False, "absoluteClaims": False} for n in names}
+        data.update(flags)
+        p = self.tmp / "attest.json"
+        p.write_text(json.dumps(data), encoding="utf-8")
+        return str(p)
+
+    def test_reject_960x540(self):
+        img = self.tmp / "960x540.png"
+        make_png(img, 960, 540)
+        r = run("assets_pack.py", "--from", str(img), "--run-dir", str(self.run_dir),
+                "--content-attest", self._attest(["960x540.png"]), "--dry-run")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不在精确白名单", r.stderr)
+
+    def test_reject_19_images(self):
+        d = self.tmp / "many"
+        d.mkdir()
+        names = []
+        for i in range(19):
+            n = f"raw-{i:02d}.png"
+            make_png(d / n, 750, 1000)
+            names.append(n)
+        r = run("assets_pack.py", "--from", str(d), "--run-dir", str(self.run_dir),
+                "--content-attest", self._attest(names), "--dry-run")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("张数上限 18", r.stderr)
+
+    def test_reject_ai_watermark(self):
+        img = self.tmp / "ok.png"
+        make_png(img, 750, 1000)
+        att = self.tmp / "att.json"
+        att.write_text(json.dumps({"ok.png": {"aiWatermark": True, "beforeAfter": False,
+                                              "absoluteClaims": False}}), encoding="utf-8")
+        r = run("assets_pack.py", "--from", str(img), "--run-dir", str(self.run_dir),
+                "--content-attest", str(att), "--dry-run")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("内容红线未过", r.stderr)
+
+    def test_accept_750x1000(self):
+        img = self.tmp / "ok.png"
+        make_png(img, 750, 1000)
+        r = run("assets_pack.py", "--from", str(img), "--run-dir", str(self.run_dir),
+                "--content-attest", self._attest(["ok.png"]), "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("四关全过", r.stdout)
+
+
+class TestManifest(RunCase):
+    def test_version_filename_mismatch(self):
+        self.write_manifest({"04-assets": {"status": "done", "file": "04-assets/image-map.json", "version": 7}})
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("错位", r.stdout)
+
+    def test_gate_blocks_success(self):
+        self.write_manifest({"08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
+                            gates={"G4": {"status": "open"}})
+        r1 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r1.returncode, 1)
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "gate", "G4", "closed")
+        self.assertEqual(r2.returncode, 0)
+        r3 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r3.returncode, 0, r3.stderr)
+
+    def test_lint_files_stray(self):
+        (self.run_dir / "05-plan" / "notes.json").write_text("{}", encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "lint-files")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不在协议封闭清单内", r.stdout)
+
+    def test_lint_files_clean(self):
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "lint-files")
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+
+class TestSnapshotEnums(unittest.TestCase):
+    def test_exclude_trans_zero_is_legal(self):
+        sys.path.insert(0, str(SCRIPTS))
+        from snapshot_diff import enum_warnings  # noqa: E402
+
+        self.assertEqual(enum_warnings({"audience": {"excludeTrans": "0"}}), [])
+        self.assertTrue(enum_warnings({"audience": {"excludeTrans": "9"}}))
+
+
+class TestPreflight(RunCase):
+    def test_preflight_pass(self):
+        r = subprocess.run(
+            ["bash", str(SCRIPTS / "preflight.sh"), "--run-dir", str(self.run_dir), "--skip-snapshot"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("预检结论：PASS", r.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

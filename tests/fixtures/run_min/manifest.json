@@ -1,0 +1,9 @@
+{
+  "runId": "test-run",
+  "stages": {
+    "04-assets": {"status": "done", "by": "成员4", "file": "04-assets/image-map.json", "version": 1},
+    "08-execution": {"status": "pending", "file": "08-execution/before-snapshot.json", "version": 1}
+  },
+  "pendingGates": {},
+  "finalStatus": "running"
+}
