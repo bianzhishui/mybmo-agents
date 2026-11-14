@@ -11,6 +11,7 @@
                                有未闭环 pendingGates 时拒绝置 success（建议12）
     gate <id> <status>         改一个人工闸（open / closed），可带 --reason
     verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256
+    lint-files                 校验 run 目录文件名是否落在协议封闭清单内（§1.1）
 
 状态枚举：pending / running / done / rejected / frozen
 finalStatus 枚举：running / success / success-paused / failed / abandoned
@@ -177,6 +178,64 @@ def verify(run_dir: Path, manifest: dict, record: bool) -> int:
     return 1 if fails else 0
 
 
+# skill §1.1 的目录内允许文件名（不含 .vN 变体与下划线辅助文件，二者另行放行）
+ALLOWED_FILES: dict[str, list[str]] = {
+    "01-product": [r"analysis\.md", r"required-fields\.json"],
+    "02-keywords": [r"packages\.json", r"binding\.md"],
+    "03-copy": [r"copy\.json", r"image-prompts\.md"],
+    "04-assets": [r"img-.+\.(?:png|jpe?g|webp|gif|bmp)", r"img-.+\.b64", r"image-map\.json"],
+    "05-plan": [r"plan-draft\.json"],
+    "06-payloads": [r"addKeywordPackages\.json", r"uploadImage\.json", r"addCampaignShopping\.json"],
+    "07-audit": [r"audit-report\.md"],
+    "08-execution": [
+        r"preflight\.json",
+        r"execution-plan\.json",
+        r"before-snapshot\.json",
+        r"after-snapshot\.json",
+        r"calls\.jsonl",
+    ],
+}
+VERSION_SUFFIX_RE = re.compile(r"\.v\d+(?=\.[^.]+$)")
+
+
+def lint_files(run_dir: Path) -> int:
+    """文件名是否都落在协议封闭清单内。返回 0 全合规 / 1 有清单外文件。
+
+    放行三类：① §1.1 列出的基础名；② 其 `.vN` 变体（`xxx.v2.json`）；③ 下划线开头的辅助文件
+    （`_notes.json`、`_draft.md`、`_xxx-response.json`）。其余即"协议外命名"。
+    """
+    problems: list[str] = []
+    checked = 0
+    print(f"run: {run_dir}\n")
+    for stage, patterns in ALLOWED_FILES.items():
+        d = run_dir / stage
+        if not d.is_dir():
+            problems.append(f"{stage}: 目录缺失")
+            continue
+        compiled = [re.compile("^" + pat + "$") for pat in patterns]
+        for f in sorted(d.iterdir()):
+            if f.is_dir():
+                continue
+            checked += 1
+            name = f.name
+            if name.startswith("_"):
+                continue  # 辅助文件
+            base = VERSION_SUFFIX_RE.sub("", name)  # 去掉 .vN
+            if any(c.match(name) or c.match(base) for c in compiled):
+                continue
+            problems.append(
+                f"{stage}/{name}: 不在协议封闭清单内（允许 {patterns} 或其 .vN 变体、下划线辅助文件）"
+            )
+    # 根目录只允许 manifest.json
+    for f in sorted(run_dir.iterdir()):
+        if f.is_file() and f.name != "manifest.json":
+            problems.append(f"{f.name}: run 根目录只允许 manifest.json")
+    for p_msg in problems:
+        print(f"[FAIL] {p_msg}")
+    print(f"\n检查 {checked} 个文件，清单外 {len(problems)} 个 → {'FAIL' if problems else 'PASS'}")
+    return 1 if problems else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="ECWF run 状态机")
     ap.add_argument("--run", help="runId（目录名），默认取最新")
@@ -207,6 +266,8 @@ def main(argv: list[str] | None = None) -> int:
     p_gate.add_argument("gate_id")
     p_gate.add_argument("status", choices=["open", "closed"])
     p_gate.add_argument("--reason")
+
+    sub.add_parser("lint-files", help="文件名封闭清单校验（skill §1.1）")
 
     p_verify = sub.add_parser("verify", help="版本↔文件名绑定 + 将发送文件 sha256 对账")
     p_verify.add_argument("--record", action="store_true", help="把 06-payloads 执行版 sha256 写回 manifest")
@@ -241,6 +302,9 @@ def main(argv: list[str] | None = None) -> int:
         save(run_dir, manifest)
         print(f"objects.{args.key} = {value!r}")
         return 0
+
+    if args.cmd == "lint-files":
+        return lint_files(run_dir)
 
     if args.cmd == "verify":
         rc = verify(run_dir, manifest, args.record)

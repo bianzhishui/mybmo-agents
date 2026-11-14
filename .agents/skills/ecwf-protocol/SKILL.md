@@ -48,6 +48,8 @@ whenToUse: 当一个任务是电商推广计划搭建链路的一环——商品
 
 要改一版就落 `xxx.v2.json`（同名 + `.v2`），要写辅助说明就落 `_notes.json` / `_draft.md`。**除这两类，不要新增文件名。**
 
+机器检查：`python3 scripts/manifest.py --run <runId> lint-files` —— 目录内出现清单外文件名即 FAIL（`.vN` 变体与下划线辅助文件自动放行）。
+
 ### 1.2 图片链路：编号是唯一的追溯键
 
 ```mermaid
@@ -161,7 +163,7 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | 脚本 | 用途 |
 |---|---|
 | `scripts/new_run.py` | 建 run 目录、`.ecwf/.gitignore`、`manifest.json` |
-| `scripts/manifest.py` | 读/改 stages 状态；`verify` 校验「version↔文件名 .vN」+ 将发送文件 sha256 对账；`final` 写 finalStatus（含 `abandoned`） |
+| `scripts/manifest.py` | 读/改 stages 状态；`verify` 校验「version↔文件名 .vN」+ 将发送文件 sha256 对账；`final` 写 finalStatus（含 `abandoned`，未闭环人工闸不许置 success）；`gate` 收口人工闸；`lint-files` 校验文件名封闭清单 |
 | `scripts/record_call.py` | 追加 `calls.jsonl` 一行 |
 | `scripts/snapshot_diff.py` | before/after 快照比对（51 字段） |
 | `scripts/assets_pack.py` | 成员4：纯 base64 / imageName≤200 / MD5 / 体积 / image-map；**图片四关硬闸（精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5 一致）** |

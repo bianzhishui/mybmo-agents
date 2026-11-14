@@ -507,3 +507,4 @@ gantt
 | P1-11 授权边界 | 成员8 硬约束：⑧-4b 的 pause 收尾属既定授权范围，开量仍需 G4 + 书面确认 | 已补 |
 | P1-1 region 静默放大 | `validate_payloads.py` 机器校验：`audience.region` 必须是地域码（数字/逗号）否则 FAIL；文档/清单写"必须回读" | 正例 PASS；反例 `region="全国"` FAIL |
 | 建议10 编号失效声明 | skill §1.2：提示词编号无对应产出须在同文件追加"作废声明" | 已补 |
+| P2-7 文件名封闭清单 | `scripts/manifest.py lint-files`：目录内出现清单外文件名即 FAIL（`.vN` 变体与 `_` 前缀自动放行）；写进 §5.4 与 skill §1.1 | 该 run 54 个文件全合规 PASS；塞 `05-plan/notes.json`、`01-product/summary.md` → FAIL |

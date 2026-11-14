@@ -300,10 +300,11 @@ API 参数
 2. **冻结不改写**：上游产物被下游消费后即冻结。要改必须落 `xxx.vN.json` 并更新 `manifest` 版本号，**禁止原地覆盖**——否则审计结论与最终 payload 对不上。
    - **`version` 必须等于文件名里的 `.vN`**（无 `.vN` 视为 1）；`scripts/manifest.py verify` 会检出错位（真实案例：`04-assets.version=7` 而文件是 `image-map.v6.json`）。
    - **已冻结的 payload 一律不原地重写**：改法＝出新文件 `xxx.v(N+1).json` + `_notes.revisionReason` 写明改因与 diff。
-3. **只强制留不可再生的**：`04-assets/*.png` 必留（丢了无法重建）；`.b64` 可删（可从 png 重编码）；线上对象只存 ID 不存副本。
-4. **`before-snapshot.json` 是回滚唯一基准**：`material` 整体替换 + `fengchaoDescription` 读不回，没有它就无法回滚。
-5. **`call_id` 必落盘**：`calls.jsonl` 每行 `{ts, runId, step, capability, call_id, state}`，用 `call_id` 回连 MCP `audit_log`。
-6. **敏感信息不入盘**：token / 授权码 / 密钥绝不写进 run 目录；`productId`、`imageId` 属业务 ID，可落盘。
+3. **文件名落在封闭清单内**（§5.3 目录契约）：清单外文件名用 `scripts/manifest.py lint-files` 检出即 FAIL；改版用 `.vN` 变体、辅助说明用下划线前缀。
+4. **只强制留不可再生的**：`04-assets/*.png` 必留（丢了无法重建）；`.b64` 可删（可从 png 重编码）；线上对象只存 ID 不存副本。
+5. **`before-snapshot.json` 是回滚唯一基准**：`material` 整体替换 + `fengchaoDescription` 读不回，没有它就无法回滚。
+6. **`call_id` 必落盘**：`calls.jsonl` 每行 `{ts, runId, step, capability, call_id, state}`，用 `call_id` 回连 MCP `audit_log`。
+7. **敏感信息不入盘**：token / 授权码 / 密钥绝不写进 run 目录；`productId`、`imageId` 属业务 ID，可落盘。
 
 ### 5.5 `manifest.json`：状态机 + 断点续跑
 
