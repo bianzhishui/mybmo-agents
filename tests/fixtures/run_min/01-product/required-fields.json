@@ -11,6 +11,22 @@
     "productId": {
       "value": "1000000001",
       "source": "接口实测"
+    },
+    "productName": {
+      "value": "测试商品",
+      "source": "接口实测"
+    },
+    "eshopType": {
+      "value": 1,
+      "source": "接口实测"
+    },
+    "transType": {
+      "value": 14,
+      "source": "用户提供"
+    },
+    "targetType": {
+      "value": 1,
+      "source": "方案口径"
     }
   },
   "userConfirmations": {
