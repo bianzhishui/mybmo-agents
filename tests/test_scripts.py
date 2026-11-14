@@ -189,7 +189,7 @@ class TestManifest(RunCase):
         # 置 success 还需 approval + 用户确认
         r2b = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
         self.assertEqual(r2b.returncode, 1)
-        self.assertIn("approval.json", r2b.stderr)
+        self.assertIn("user-confirmation", r2b.stderr)
 
     def test_lint_files_stray(self):
         (self.run_dir / "05-plan" / "notes.json").write_text("{}", encoding="utf-8")
@@ -257,6 +257,7 @@ class TestGatesAndGuards(RunCase):
         self.assertEqual(r.returncode, 0)
 
     def test_verify_requires_approval(self):
+        (self.run_dir / "07-audit" / "approval.json").unlink()
         self.write_manifest({"06-payloads": {"status": "done", "file": "06-payloads/addCampaignShopping.json",
                                              "version": 1}})
         r = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--require-approval")
@@ -314,19 +315,23 @@ class TestHardening(RunCase):
 
     def test_final_success_needs_approval_and_confirmation(self):
         self._closed_gate()
+        # fixture 自带 approval.json → 下一步卡 user-confirmation
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("user-confirmation", r.stderr)
+        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
+            {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+
+    def test_final_success_blocks_without_approval(self):
+        self._closed_gate()
+        (self.run_dir / "07-audit" / "approval.json").unlink()
+        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
+            {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
         r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
         self.assertEqual(r.returncode, 1)
         self.assertIn("approval.json", r.stderr)
-        (self.run_dir / "07-audit").mkdir(exist_ok=True)
-        (self.run_dir / "07-audit" / "approval.json").write_text(json.dumps(
-            {"result": "pass", "payload": "x", "sha256": "y"}), encoding="utf-8")
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
-        self.assertEqual(r2.returncode, 1)
-        self.assertIn("user-confirmation", r2.stderr)
-        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
-            {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
-        r3 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
-        self.assertEqual(r3.returncode, 0, r3.stderr)
 
     def test_set_done_needs_file(self):
         self.write_manifest({})
@@ -368,12 +373,31 @@ class TestSnapshotEnums(unittest.TestCase):
 
 class TestPreflight(RunCase):
     def test_preflight_pass(self):
+        # 默认已包含 gate_check --for execute（fixture 是完整 run，含 approval）
         r = subprocess.run(
             ["bash", str(SCRIPTS / "preflight.sh"), "--run-dir", str(self.run_dir), "--skip-snapshot"],
             capture_output=True, text=True,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("预检结论：PASS", r.stdout)
+
+    def test_preflight_blocks_without_approval(self):
+        (self.run_dir / "07-audit" / "approval.json").unlink()
+        r = subprocess.run(
+            ["bash", str(SCRIPTS / "preflight.sh"), "--run-dir", str(self.run_dir), "--skip-snapshot"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("approval.json", r.stdout)
+
+    def test_preflight_skip_gates(self):
+        (self.run_dir / "07-audit" / "approval.json").unlink()
+        r = subprocess.run(
+            ["bash", str(SCRIPTS / "preflight.sh"), "--run-dir", str(self.run_dir),
+             "--skip-snapshot", "--skip-gates"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

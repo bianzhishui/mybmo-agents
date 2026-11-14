@@ -177,7 +177,7 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | `scripts/snapshot_diff.py` | before/after 快照比对（51 字段） |
 | `scripts/assets_pack.py` | 成员4：纯 base64 / imageName≤200 / MD5 / 体积 / image-map；**图片四关硬闸（精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5 一致）** |
 | `scripts/backfill_image_ids.py` | ⑧-2 后用 uploadImage 返回值回填 imageId（默认落 `.v2.json`） |
-| `scripts/preflight.sh` | ⑧-1 一键预检：串 `validate_payloads` + `manifest verify` + `manifest lint-files` + `snapshot_diff` |
+| `scripts/preflight.sh` | ⑧-1 一键预检：串 `validate_payloads` + `manifest verify` + `manifest lint-files` + `snapshot_diff` + **`gate_check --for execute`（默认，`--skip-gates` 可跳）** |
 | `scripts/validate_payloads.py` | §5.6 预检：schema 校验 + imageId 编造检测 + 业务规则（默认按 `.vN` 取最新 image-map；`userPortrait` 走品牌头像分支） |
 | `scripts/_enums.py` | `validate_payloads` / `snapshot_diff` 共用的字段枚举表（`excludeTrans` 含 `"0"`） |
 

@@ -204,7 +204,7 @@ API 参数
 
 | # | 动作 | 能力 | 成功判据 |
 |---|---|---|---|
-| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>` 一把跑完 4 项只读校验** | 授权正常、字段无缺、预检 PASS |
+| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>`（默认含 gate_check --for execute）** | 授权正常、字段无缺、预检 PASS |
 | 2 | **图片入库** | `uploadImage`（`addImage=true`，members4 提供的 base64） | 返回 `imageId`，回填映射表 |
 | 3 | **建词包** | `addKeywordPackages`（成员2 的 `keywordPackageTypes`） | 返回 `packageId`，`getKeywordPackages` 回读存在 |
 | 4 | **建计划** | `addCampaignShopping`（`pause=true`，`material` 引用步骤2 的 `imageId`） | 返回 `campaignShoppingId`，`succ=oprs` |
@@ -389,7 +389,7 @@ API 参数
 | **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json`；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
 | **系统文件** | `.DS_Store` 等点文件不参与文件名校验 | `manifest.py lint-files` |
 
-⑧-1 可加 `--with-gates`：预检顺带跑 `gate_check --for execute`。
+`preflight.sh` **默认**就包含 `gate_check --for execute`（审计放行件缺失即 FAIL）；只在做半成品自检时用 `--skip-gates`。
 
 ## 六、产出物模板
 

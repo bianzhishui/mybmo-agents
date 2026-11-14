@@ -63,7 +63,7 @@
 
 ## 流程闸门（防绕过）
 
-- `bash scripts/preflight.sh --run <runId> [--with-gates]`：一条命令跑 validate / verify / lint-files / snapshot_diff（+ gate_check）
+- `bash scripts/preflight.sh --run <runId>`：一条命令跑 validate / verify / lint-files / snapshot_diff / **gate_check --for execute**（默认；`--skip-gates` 半成品自检用）
 - `python3 scripts/gate_check.py --for execute|unpause|delete`：启动 / 开量 / 删除前硬闸（审计放行件 + 人工闸 + 用户确认）
 - `07-audit/approval.json`：审计放行的唯一机读凭据；`08-execution` 未拿到不得置 done
 - `python3 -m unittest discover -s tests -v`：32 例正反例回归

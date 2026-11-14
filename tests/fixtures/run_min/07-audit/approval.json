@@ -1,0 +1,10 @@
+{
+  "result": "pass",
+  "payload": "06-payloads/addCampaignShopping.json",
+  "sha256": "e33a0e6d53495fd6e8365ac31b49b737a26e5248d8160db2a50b4f8c691e202d",
+  "auditor": "成员7",
+  "at": "2026-01-01T00:00:00+08:00",
+  "evidence": [
+    "deadbeef0001"
+  ]
+}

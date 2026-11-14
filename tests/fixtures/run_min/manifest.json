@@ -1,8 +1,46 @@
 {
   "runId": "test-run",
   "stages": {
-    "04-assets": {"status": "done", "by": "成员4", "file": "04-assets/image-map.json", "version": 1},
-    "08-execution": {"status": "pending", "file": "08-execution/before-snapshot.json", "version": 1}
+    "01-product": {
+      "status": "done",
+      "file": "01-product/required-fields.json",
+      "version": 1
+    },
+    "02-keywords": {
+      "status": "done",
+      "file": "02-keywords/packages.json",
+      "version": 1
+    },
+    "03-copy": {
+      "status": "done",
+      "file": "03-copy/copy.json",
+      "version": 1
+    },
+    "04-assets": {
+      "status": "done",
+      "file": "04-assets/image-map.json",
+      "version": 1
+    },
+    "05-plan": {
+      "status": "done",
+      "file": "05-plan/plan-draft.json",
+      "version": 1
+    },
+    "06-payloads": {
+      "status": "done",
+      "file": "06-payloads/addCampaignShopping.json",
+      "version": 1
+    },
+    "07-audit": {
+      "status": "done",
+      "file": "07-audit/audit-report.md",
+      "version": 1
+    },
+    "08-execution": {
+      "status": "pending",
+      "file": "08-execution/before-snapshot.json",
+      "version": 1
+    }
   },
   "pendingGates": {},
   "finalStatus": "running"
