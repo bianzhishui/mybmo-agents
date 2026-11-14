@@ -110,3 +110,41 @@ def within(base: Path, rel: str) -> Path | None:
         return p
     except (ValueError, OSError):
         return None
+
+
+def sha256_of(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def check_approval_payload(approval: dict, run_dir: Path) -> tuple[list[str], Path | None, str | None]:
+    """校验"审计放行件指向的 payload 是否真存在且未被换"。
+
+    返回 (problems, payload_path, payload_sha)。缺失任何关键字段都算 problem：
+      result=pass、payload 非空、sha256 非空、路径在 run 内、文件存在、内容 sha 匹配。
+    """
+    problems: list[str] = []
+    if approval.get("result") != "pass":
+        problems.append(f"approval.result={approval.get('result')!r}（非 pass）")
+    rel = str(approval.get("payload") or "")
+    if not rel:
+        problems.append("approval 缺 payload")
+        return problems, None, None
+    if not approval.get("sha256"):
+        problems.append("approval 缺 sha256（无法绑定 payload 内容）")
+        return problems, None, None
+    path = within(run_dir, rel)
+    if path is None:
+        problems.append(f"approval.payload 越界：{rel!r}")
+        return problems, None, None
+    if not path.is_file():
+        problems.append(f"approval.payload 不存在：{rel!r}")
+        return problems, path, None
+    digest = sha256_of(path)
+    if digest != approval["sha256"]:
+        problems.append("payload 内容与 approval.sha256 不符（审计后被换过）")
+    return problems, path, digest

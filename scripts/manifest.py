@@ -42,8 +42,10 @@ from pathlib import Path
 
 from _runbook import (
     STAGES,
+    check_approval_payload,
     file_version,
     resolve_run_dir as _resolve_run_dir,
+    sha256_of,
     strip_version,
     within,
 )
@@ -82,14 +84,6 @@ def save(run_dir: Path, manifest: dict) -> None:
     with (run_dir / "manifest.json").open("w", encoding="utf-8") as fh:
         json.dump(manifest, fh, ensure_ascii=False, indent=2)
         fh.write("\n")
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _walk(obj, trail=""):
@@ -194,6 +188,9 @@ def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool =
                 if ap:
                     ap_sha = str(ap.get("sha256") or "")
                     ap_file = Path(str(ap.get("payload") or "")).name
+                    if not ap_sha:
+                        fails.append(f"{stage}: approval 缺 sha256（无法绑定 payload 内容）")
+                        print(f"[FAIL] {stage:12} approval 缺 sha256")
                     if ap.get("result") != "pass":
                         fails.append(f"{stage}: approval.result={ap.get('result')!r}（非 pass）")
                         print(f"[FAIL] {stage:12} 审计结论非 pass：{ap.get('result')!r}")
@@ -369,24 +366,15 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path |
     except json.JSONDecodeError:
         print("approval.json 不是合法 JSON", file=sys.stderr)
         return 1
+    probs, payload_path, payload_sha = check_approval_payload(approval, run_dir)
+    if probs:
+        for pb in probs:
+            print(f"拒绝锚定：{pb}", file=sys.stderr)
+        return 1
     payload_rel = str(approval.get("payload") or "")
-    payload_path = within(run_dir, payload_rel) if payload_rel else None
-    if payload_path is None:
-        print(f"拒绝锚定：approval.payload 路径越界 {payload_rel!r}", file=sys.stderr)
-        return 1
-    if not payload_path.is_file():
-        print(f"approval.payload 指向的文件不存在：{payload_rel!r}", file=sys.stderr)
-        return 1
     stage06 = manifest.get("stages", {}).get("06-payloads", {}).get("file")
     if stage06 and Path(stage06).name != payload_path.name:
         print(f"拒绝锚定：approval.payload={payload_path.name} ≠ manifest 06-payloads={Path(stage06).name}", file=sys.stderr)
-        return 1
-    if approval.get("result") != "pass":
-        print(f"拒绝锚定：approval.result={approval.get('result')!r}（只有 pass 可锚）", file=sys.stderr)
-        return 1
-    payload_sha = sha256_of(payload_path)
-    if approval.get("sha256") and approval["sha256"] != payload_sha:
-        print(f"拒绝锚定：approval.sha256 与现场 payload 不符（{approval['sha256'][:16]}≠{payload_sha[:16]}）", file=sys.stderr)
         return 1
     approval_sha = sha256_of(approval_path)
     log_path = log_path or anchor_log_path(run_dir, manifest, None)
@@ -636,13 +624,12 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             try:
                 _ap = json.loads((run_dir / "07-audit" / "approval.json").read_text(encoding="utf-8"))
-                _rel = str(_ap.get("payload") or "")
-                _pp = within(run_dir, _rel) if _rel else None
-                if _pp is None or not _pp.is_file() or sha256_of(_pp) != _ap.get("sha256"):
-                    print("拒绝置 success：payload 文件缺失或与 approval.sha256 不符（内容被换过）", file=sys.stderr)
-                    return 1
             except (json.JSONDecodeError, OSError):
                 print("拒绝置 success：approval.json 解析失败", file=sys.stderr)
+                return 1
+            _probs, _, _ = check_approval_payload(_ap, run_dir)
+            if _probs:
+                print(f"拒绝置 success：{'；'.join(_probs)}", file=sys.stderr)
                 return 1
         manifest["finalStatus"] = args.status
         if args.reason:

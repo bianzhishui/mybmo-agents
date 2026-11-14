@@ -298,7 +298,7 @@ install_bundle  target=/Users/biandc/Desktop/mybmo-agents/adapters/dsh
 | P0 | 方案文档 + bundle YAML + 协议 skill **（本次已落）** | — | `adapters/dsh/`、`.agents/skills/ecwf-protocol/`、本文 |
 | P1 | 装 bundle + 验证清单 1–5 | P0 | roster 里 9 个 preset 可用 |
 | P2 | 验证 6–8（preset 内 MCP）+ Host 级 MCP 下线 | P1 | 写入口真正唯一 |
-| P3 | 脚本补齐：`new_run` / `manifest` / `record_call` / `snapshot_diff` / `assets_pack` / `backfill_image_ids` | P1 | ✅ 已完成，全部实测（含超限/同 MD5/rejected 守卫/快照告警）；**后续已扩到 14 个脚本 + 57 例回归，见 §十一** |
+| P3 | 脚本补齐：`new_run` / `manifest` / `record_call` / `snapshot_diff` / `assets_pack` / `backfill_image_ids` | P1 | ✅ 已完成，全部实测（含超限/同 MD5/rejected 守卫/快照告警）；**后续已扩到 16 个脚本 + 66 例回归，见 §十一** |
 | P4 | 首个灰度单：1 计划 / 1 词包 / 1 图、`pause=true` | P2+P3 | ✅ **2026-11-13 已跑通**：`addCampaignShopping` 建单成功，`campaignShoppingId=2387079078`（第 4 次尝试；前 3 次分别暴露 userPortrait/图片尺寸/audience 必带键问题，见审计报告） |
 | P5 | 批量与归档（`archive_runs.py`） | P4 成功 | 可重复生产 |
 
@@ -367,6 +367,6 @@ mybmo-agents/
 | **一键预检** | `scripts/preflight.sh`（validate + verify + lint-files + snapshot_diff + gate_check） |
 | **机检加固** | 占位文本、图片尺寸白名单、`region` 形制、⑤↔⑥ 追溯键（多计划）、calls/approvals hash 链、账户一致性、未知文件/目录 |
 | **状态机** | `version == 文件名 .vN` 强绑定；未闭环闸不许 `final success`；`retry` 硬上限 3 次 |
-| **回归与 CI** | `tests/` 57 例；`.github/workflows/ci.yml` |
+| **回归与 CI** | `tests/` 66 例；`.github/workflows/ci.yml` |
 
 > 单一写入口的结论不变：写能力只在成员8 的 preset 里；新增的闸门是"让越权/伪造**可发现**"，不是替代权限隔离。

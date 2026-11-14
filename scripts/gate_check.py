@@ -18,20 +18,11 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
 
-from _runbook import STAGES, resolve_run_dir, within
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+from _runbook import STAGES, check_approval_payload, sha256_of, resolve_run_dir
 
 
 def load(path: Path):
@@ -79,12 +70,9 @@ def main(argv: list[str] | None = None) -> int:
             payload_rel = str(approval.get("payload") or "")
             if stage06 and payload_rel and Path(stage06).name != Path(payload_rel).name:
                 problems.append(f"approval.payload={Path(payload_rel).name} ≠ manifest 06={Path(stage06).name}")
-            # 校验"货"本身：payload 必须存在且 sha 与 approval 一致
-            payload_path = within(run_dir, payload_rel) if payload_rel else None
-            if payload_path is None or not payload_path.is_file():
-                problems.append(f"approval.payload 文件不存在或越界：{payload_rel!r}")
-            elif approval.get("sha256") and sha256_of(payload_path) != approval["sha256"]:
-                problems.append("payload 内容与 approval.sha256 不符（审计后被换过）")
+            # 校验"货"本身（缺 sha256 / 文件 / 内容不符 都会被 check_approval_payload 报出）
+            probs, _, _ = check_approval_payload(approval, run_dir)
+            problems.extend(probs)
 
     if args.target == "execute":
         stages = manifest.get("stages", {})
