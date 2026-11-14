@@ -320,6 +320,9 @@ def _log_chain_broken(path: Path) -> tuple[int, int]:
 
 
 def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path) -> int:
+    if manifest.get("stages", {}).get("07-audit", {}).get("status") != "done":
+        print("拒绝锚定：07-audit 尚未 done", file=sys.stderr)
+        return 1
     approval_path = run_dir / approval_rel
     if not approval_path.is_file():
         print(f"缺审计放行件：{approval_path}", file=sys.stderr)
@@ -334,12 +337,25 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path) 
     if not payload_rel or not payload_path.is_file():
         print(f"approval.payload 指向的文件不存在：{payload_rel!r}", file=sys.stderr)
         return 1
+    if approval.get("result") != "pass":
+        print(f"拒绝锚定：approval.result={approval.get('result')!r}（只有 pass 可锚）", file=sys.stderr)
+        return 1
     payload_sha = sha256_of(payload_path)
     if approval.get("sha256") and approval["sha256"] != payload_sha:
         print(f"拒绝锚定：approval.sha256 与现场 payload 不符（{approval['sha256'][:16]}≠{payload_sha[:16]}）", file=sys.stderr)
         return 1
     approval_sha = sha256_of(approval_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    # 幂等：若该 run 最后一次记录已是同一组 digest，就不重复追加
+    existing = [r for r in _read_log(log_path)
+                if r.get("runId") == (manifest.get("runId") or run_dir.name)]
+    if existing:
+        last = existing[-1]
+        if last.get("approvalSha256") == approval_sha and last.get("payloadSha256") == payload_sha:
+            manifest["approvalSha256"] = approval_sha
+            save(run_dir, manifest)
+            print(f"已锚定过（digest 未变），跳过追加：approvalSha256={approval_sha[:16]}…")
+            return 0
     prev_raw = ""
     if log_path.is_file():
         lines = [ln for ln in log_path.read_text(encoding="utf-8").splitlines() if ln.strip()]

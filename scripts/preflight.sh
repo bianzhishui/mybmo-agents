@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ⑧-1 预检的一键入口：把 4 个只读校验串起来，任一 FAIL 即非 0 退出。
+# ⑧-1 预检的一键入口：把 5 项只读校验串起来，任一 FAIL 即非 0 退出。
 #
 #   bash scripts/preflight.sh --run <runId>
 #   bash scripts/preflight.sh --run-dir .ecwf/runs/xxx
@@ -12,6 +12,7 @@
 #   2) manifest.py verify    —— version==文件名 .vN、将发送文件 sha256 与放行记录对账、未闭环人工闸
 #   3) manifest.py lint-files—— 文件名封闭清单（§1.1）
 #   4) snapshot_diff.py      —— 有 before/after 时才跑（只读比对，差异不阻断；缺文件则跳过）
+#   5) gate_check.py --for execute —— 01~07 done + 审计放行件 pass（默认；--skip-gates 跳过）
 #
 # 退出码：0 全过 / 1 有 FAIL / 2 用法错。
 set -u

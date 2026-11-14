@@ -35,6 +35,7 @@
     "campaignShoppingId": null
   },
   "finalStatus": "running",
+  "approvalSha256": null,
   "pendingGates": {
     "G1": {
       "desc": "预检用最新 image-map（脚本已内置，无需再手工跑法 B）",

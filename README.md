@@ -67,7 +67,7 @@
 - `python3 scripts/gate_check.py --for execute|unpause|delete`：启动 / 开量 / 删除前硬闸（审计放行件 + 人工闸 + 用户确认）
 - `07-audit/approval.json`：审计放行的唯一机读凭据；`08-execution` 未拿到不得置 done
 - `python3 scripts/manifest.py --run <runId> anchor`：审计锚定——`sha256(approval)` 写入 manifest + `audit/approvals.log`（入 git、带 prev 链），`verify --strict-anchor` 三方比对
-- `python3 -m unittest discover -s tests -v`：32 例正反例回归
+- `python3 -m unittest discover -s tests -v`：40 例正反例回归
 
 ## 自动校验（§5.6 的落地实现）
 

@@ -404,6 +404,23 @@ class TestAnchor(RunCase):
         self.assertEqual(r2.returncode, 1)
         self.assertIn("approval.json 与 manifest 不符", r2.stdout)
 
+    def test_anchor_requires_pass(self):
+        ap = self.load("07-audit/approval.json")
+        ap["result"] = "fail"
+        self.save("07-audit/approval.json", ap)
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
+                "--log", str(self.tmp / "l.log"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("只有 pass 可锚", r.stderr)
+
+    def test_anchor_idempotent(self):
+        log = self.tmp / "approvals.log"
+        r1 = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+        self.assertEqual(len(log.read_text(encoding="utf-8").strip().splitlines()), 1)
+
     def test_log_chain_broken(self):
         log, r = self._anchor()
         self.assertEqual(r.returncode, 0, r.stderr)
