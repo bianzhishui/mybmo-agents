@@ -4,6 +4,7 @@
 #   bash scripts/preflight.sh --run <runId>
 #   bash scripts/preflight.sh --run-dir .ecwf/runs/xxx
 #   bash scripts/preflight.sh --run <runId> --skip-snapshot
+#   bash scripts/preflight.sh --run <runId> --with-gates    # 额外跑 gate_check --for execute
 #
 # 依次执行：
 #   1) validate_payloads.py  —— schema / 占位符 / imageId 追溯 / 业务枚举 / ⑤↔⑥ / 尺寸 / 自述对账
@@ -20,12 +21,14 @@ PY="$ROOT/.venv/bin/python"
 
 RUN_ARGS=()
 SKIP_SNAPSHOT=0
+WITH_GATES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --run|--run-dir)
       [ $# -ge 2 ] || { echo "缺少 $1 的值" >&2; exit 2; }
       RUN_ARGS+=("$1" "$2"); shift 2 ;;
     --skip-snapshot) SKIP_SNAPSHOT=1; shift ;;
+    --with-gates) WITH_GATES=1; shift ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "未知参数：$1" >&2; exit 2 ;;
   esac
@@ -42,6 +45,10 @@ run_step() {
 run_step "1/4 validate_payloads" "$PY" "$ROOT/scripts/validate_payloads.py" "${RUN_ARGS[@]}"
 run_step "2/4 manifest verify"    "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify
 run_step "3/4 manifest lint-files" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" lint-files
+
+if [ "$WITH_GATES" -eq 1 ]; then
+  run_step "5/5 gate_check --for execute" "$PY" "$ROOT/scripts/gate_check.py" "${RUN_ARGS[@]}" --for execute
+fi
 
 if [ "$SKIP_SNAPSHOT" -eq 1 ]; then
   echo

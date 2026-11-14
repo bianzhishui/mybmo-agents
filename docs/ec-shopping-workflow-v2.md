@@ -359,6 +359,19 @@ API 参数
 
 把"人检查"变成"机器检查"，是这层规范最大的价值。
 
+### 5.7 保留与清理
+
+| 项 | 策略 |
+|---|---|
+| 默认保留 | 最近 30 天 |
+| 归档 | 超期移到 `.ecwf/archive/<runId>.tar.gz`（保留 `manifest` + `08-execution/`，丢 `.b64`） |
+| 删除 | 只允许删 `pending` / `rejected` 的 run；`finalStatus=success` 的 run 不自动删 |
+
+归档用 `python3 scripts/archive_runs.py --older-than 30 [--delete] [--dry-run]`：
+打包到 `.ecwf/archive/<runId>.tar.gz`、丢 `*.b64`、保留 `manifest.json` + 全部产物；`running` 永不归档/删除。
+
+---
+
 ### 5.8 防绕过闸门（2026-11-14 加固）
 
 此前多数闸门是"自证"（执行者自己声明/自己记录），流程内的人可绕过。现补齐为"他证 + 机检"：
@@ -373,19 +386,10 @@ API 参数
 | **未知结果对账** | 超时/5xx 不重发，先按 capability 给出的查询路径核对后台 | `reconcile.py` |
 | **重试预算** | 每阶段重试硬上限 3 次，超限拒绝 | `manifest.py retry` |
 | **人工闸证据** | `gate … closed` 必须带 `--evidence`（用户原话/call_id） | `manifest.py gate` |
+| **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json`；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
+| **系统文件** | `.DS_Store` 等点文件不参与文件名校验 | `manifest.py lint-files` |
 
-### 5.7 保留与清理
-
-| 项 | 策略 |
-|---|---|
-| 默认保留 | 最近 30 天 |
-| 归档 | 超期移到 `.ecwf/archive/<runId>.tar.gz`（保留 `manifest` + `08-execution/`，丢 `.b64`） |
-| 删除 | 只允许删 `pending` / `rejected` 的 run；`finalStatus=success` 的 run 不自动删 |
-
-归档用 `python3 scripts/archive_runs.py --older-than 30 [--delete] [--dry-run]`：
-打包到 `.ecwf/archive/<runId>.tar.gz`、丢 `*.b64`、保留 `manifest.json` + 全部产物；`running` 永不归档/删除。
-
----
+⑧-1 可加 `--with-gates`：预检顺带跑 `gate_check --for execute`。
 
 ## 六、产出物模板
 

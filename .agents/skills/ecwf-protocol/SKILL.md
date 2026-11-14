@@ -181,7 +181,7 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | `scripts/validate_payloads.py` | §5.6 预检：schema 校验 + imageId 编造检测 + 业务规则（默认按 `.vN` 取最新 image-map；`userPortrait` 走品牌头像分支） |
 | `scripts/_enums.py` | `validate_payloads` / `snapshot_diff` 共用的字段枚举表（`excludeTrans` 含 `"0"`） |
 
-八个脚本都已实测可用；`validate_payloads.py` / `backfill_image_ids.py` 需要 `jsonschema`（`.venv`）。
+以上脚本除 `preflight.sh` 是 bash 外均为 Python；`validate_payloads.py` / `backfill_image_ids.py` / `scaffold_plan.py` 需要 `jsonschema`（`.venv`）。回归：`python -m unittest discover -s tests -v`。
 
 ## 7.1 预检的授权判据（`auth_status` 返回的是账户数组）
 

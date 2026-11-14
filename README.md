@@ -61,6 +61,13 @@
 - `scripts/assets_pack.py`：图片**四关硬闸**——① 尺寸精确白名单（370×245/1140×640/750×1000，方向固定）
   ② 张数 ≤18 ③ 内容红线自查声明（**我方审计口径，不是平台拒审**）④ md5 与 image-map 一致。不过就不发上传调用。
 
+## 流程闸门（防绕过）
+
+- `bash scripts/preflight.sh --run <runId> [--with-gates]`：一条命令跑 validate / verify / lint-files / snapshot_diff（+ gate_check）
+- `python3 scripts/gate_check.py --for execute|unpause|delete`：启动 / 开量 / 删除前硬闸（审计放行件 + 人工闸 + 用户确认）
+- `07-audit/approval.json`：审计放行的唯一机读凭据；`08-execution` 未拿到不得置 done
+- `python3 -m unittest discover -s tests -v`：32 例正反例回归
+
 ## 自动校验（§5.6 的落地实现）
 
 `scripts/validate_payloads.py`——成员8 第 1 步预检用的只读校验器：

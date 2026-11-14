@@ -253,8 +253,8 @@ def lint_files(run_dir: Path) -> int:
                 continue
             checked += 1
             name = f.name
-            if name.startswith("_"):
-                continue  # 辅助文件
+            if name.startswith("_") or name.startswith("."):
+                continue  # 辅助文件 / 系统点文件（.DS_Store 等）
             m = re.search(r"\.v(\d+)(?=\.[^.]+$)", name)
             if m and int(m.group(1)) > 99:
                 problems.append(f"{stage}/{name}: 版本号 {m.group(1)} 过大（上限 99，防止用高版本号制造'唯一执行版'混淆）")
@@ -267,7 +267,7 @@ def lint_files(run_dir: Path) -> int:
             )
     # 根目录只允许 manifest.json
     for f in sorted(run_dir.iterdir()):
-        if f.is_file() and f.name != "manifest.json":
+        if f.is_file() and f.name != "manifest.json" and not f.name.startswith("."):
             problems.append(f"{f.name}: run 根目录只允许 manifest.json")
     for p_msg in problems:
         print(f"[FAIL] {p_msg}")
@@ -301,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     p_final = sub.add_parser("final", help="写 finalStatus")
     p_final.add_argument("status", choices=sorted(FINAL_STATUSES))
     p_final.add_argument("--reason")
+    p_final.add_argument("--force", action="store_true", help="跳过开量放行检查")
 
     p_gate = sub.add_parser("gate", help="改人工闸状态（pendingGates）")
     p_gate.add_argument("gate_id")
@@ -390,14 +391,21 @@ def main(argv: list[str] | None = None) -> int:
             gid for gid, g in (manifest.get("pendingGates") or {}).items()
             if (g or {}).get("status", "open") != "closed"
         ]
-        if args.status == "success" and open_gates:
-            print(
-                f"拒绝置 success：仍有未闭环人工闸 {open_gates}。"
-                f"先 scripts/manifest.py gate <id> closed --reason …，"
-                f"或置 success-paused（保持暂停交付）。",
-                file=sys.stderr,
-            )
-            return 1
+        if args.status == "success" and not args.force:
+            if open_gates:
+                print(
+                    f"拒绝置 success：仍有未闭环人工闸 {open_gates}。"
+                    f"先 scripts/manifest.py gate <id> closed --evidence …，"
+                    f"或置 success-paused（保持暂停交付）。",
+                    file=sys.stderr,
+                )
+                return 1
+            if not (run_dir / "07-audit" / "approval.json").is_file():
+                print("拒绝置 success：缺 07-audit/approval.json（审计放行件）", file=sys.stderr)
+                return 1
+            if not (run_dir / "08-execution" / "user-confirmation.json").is_file():
+                print("拒绝置 success：缺 08-execution/user-confirmation.json（用户书面确认开量）", file=sys.stderr)
+                return 1
         manifest["finalStatus"] = args.status
         if args.reason:
             manifest.setdefault("finalStatusNote", {})["reason"] = args.reason
@@ -417,8 +425,12 @@ def main(argv: list[str] | None = None) -> int:
         if missing:
             print(f"拒绝置 done：前置阶段未完成 {missing}（确需越级加 --force）", file=sys.stderr)
             return 1
-        if args.file and not (run_dir / args.file).is_file():
-            print(f"拒绝置 done：文件不存在 {args.file}", file=sys.stderr)
+        recorded_file = args.file or manifest.get("stages", {}).get(args.stage, {}).get("file")
+        if not recorded_file:
+            print(f"拒绝置 {args.stage} done：未指定产出文件（--file 或 manifest 已有 file）", file=sys.stderr)
+            return 1
+        if not (run_dir / recorded_file).is_file():
+            print(f"拒绝置 done：文件不存在 {recorded_file}", file=sys.stderr)
             return 1
         if args.stage == "08-execution":
             if manifest.get("stages", {}).get("07-audit", {}).get("status") != "done":

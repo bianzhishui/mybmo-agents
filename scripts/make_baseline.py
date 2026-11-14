@@ -105,8 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     skeleton.setdefault("pause", True)
     skeleton["audience"] = {
         k: v for k, v in (campaign.get("audience") or {}).items()
-        if not isinstance(v, (dict, list)) and v is not None
-    }
+        if not isinstance(v, (dict, list)) and v is not None and k != "fcKeywordWtpids"
+    }  # fcKeywordWtpids 属"绑包结果"，不写进骨架：否则⑥照抄会把别的计划的包绑到新计划上
     skeleton["schedule"] = campaign.get("schedule") or [{"weekDay": d, "startHour": 0, "endHour": 24} for d in range(1, 8)]
     skeleton["material"] = strip_material(campaign.get("material") or {})
 

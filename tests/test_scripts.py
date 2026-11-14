@@ -186,8 +186,10 @@ class TestManifest(RunCase):
         r2 = run("manifest.py", "--run-dir", str(self.run_dir), "gate", "G4", "closed",
                  "--evidence", "用户原话：同意开量")
         self.assertEqual(r2.returncode, 0)
-        r3 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
-        self.assertEqual(r3.returncode, 0, r3.stderr)
+        # 置 success 还需 approval + 用户确认
+        r2b = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r2b.returncode, 1)
+        self.assertIn("approval.json", r2b.stderr)
 
     def test_lint_files_stray(self):
         (self.run_dir / "05-plan" / "notes.json").write_text("{}", encoding="utf-8")
@@ -303,6 +305,56 @@ class TestGatesAndGuards(RunCase):
         r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
         self.assertEqual(r.returncode, 1)
         self.assertIn("prev 不匹配", r.stdout)
+
+
+class TestHardening(RunCase):
+    def _closed_gate(self):
+        self.write_manifest({"08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
+                            gates={"G4": {"status": "closed", "evidence": "x"}})
+
+    def test_final_success_needs_approval_and_confirmation(self):
+        self._closed_gate()
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("approval.json", r.stderr)
+        (self.run_dir / "07-audit").mkdir(exist_ok=True)
+        (self.run_dir / "07-audit" / "approval.json").write_text(json.dumps(
+            {"result": "pass", "payload": "x", "sha256": "y"}), encoding="utf-8")
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r2.returncode, 1)
+        self.assertIn("user-confirmation", r2.stderr)
+        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
+            {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
+        r3 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r3.returncode, 0, r3.stderr)
+
+    def test_set_done_needs_file(self):
+        self.write_manifest({})
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "set", "01-product", "done")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("未指定产出文件", r.stderr)
+
+    def test_lint_ignores_dotfiles(self):
+        (self.run_dir / ".DS_Store").write_bytes(b"x")
+        (self.run_dir / "05-plan" / ".DS_Store").write_bytes(b"x")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "lint-files")
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_baseline_has_no_fc_keyword(self):
+        base = json.loads((ROOT / "templates" / "campaign-baseline.json").read_text(encoding="utf-8"))
+        self.assertNotIn("fcKeywordWtpids", base["campaignShoppingTypes"][0]["audience"])
+
+    def test_make_baseline_drops_fc_keyword(self):
+        rb = self.tmp / "rb.json"
+        rb.write_text(json.dumps({"campaignShoppingTypes": [{
+            "audience": {"interests": "0", "fcKeywordWtpids": "123", "region": "9999999"},
+            "material": {"brand": "B", "userPortrait": {"imageId": 9},
+                         "title": [{"text": "标题文案标题文案"}], "description": [],
+                         "pictures": [{"imageId": 5}]}}]}), encoding="utf-8")
+        r = run("make_baseline.py", "--from", str(rb), "--stdout")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)["campaignShoppingTypes"][0]["audience"]
+        self.assertNotIn("fcKeywordWtpids", out)
 
 
 class TestSnapshotEnums(unittest.TestCase):

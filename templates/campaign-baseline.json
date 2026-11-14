@@ -19,7 +19,7 @@
     "说明": "以下键不写时服务端会补默认值；本骨架按读回值显式列出，便于审计逐键比对。",
     "region": "9999999 = 不限地域。⚠ 传非法值（如中文『全国』）不报错：建单成功、响应 region=\"\"、读回被静默放大为 9999999。→ 只传地域码，写完必须回读 region 校验。",
     "excludeTrans": "\"0\" = 不限（服务端接受并有该默认值；官方枚举只写 1/4 是漏的）",
-    "fcKeywordWtpids": "\"\" 建单时为空；由 ⑧-5 bindPlanKeywordPackages 写入（包→计划替换式、计划→包累加）",
+    "fcKeywordWtpids": "建单时【不写该键】：由 ⑧-5 bindPlanKeywordPackages 写入（包→计划替换、计划→包累加）；写空串会过不了 schema 的 ^\\d+(,\\d+)*$",
     "intelligentWeight": "\"0\" = 不用智能放量"
   },
   "campaignShoppingTypes": [
@@ -87,8 +87,7 @@
         "excludeTrans": "0",
         "keywords": "<02-keywords 词，逗号分隔，≤2000>",
         "keywordsExtend": "1",
-        "intelligentWeight": "1",
-        "fcKeywordWtpids": ""
+        "intelligentWeight": "1"
       },
       "material": {
         "brand": "<用户确认的 brand，禁止沿用样本账户>",
