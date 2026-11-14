@@ -165,6 +165,11 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | `scripts/new_run.py` | 建 run 目录、`.ecwf/.gitignore`、`manifest.json` |
 | `scripts/manifest.py` | 读/改 stages 状态；`verify` 校验「version↔文件名 .vN」+ 将发送文件 sha256 对账；`final` 写 finalStatus（含 `abandoned`，未闭环人工闸不许置 success）；`gate` 收口人工闸；`lint-files` 校验文件名封闭清单 |
 | `scripts/record_call.py` | 追加 `calls.jsonl` 一行 |
+| `scripts/make_baseline.py` | 从 `getCampaignShopping` 读回文件生成账户参数骨架（不调接口） |
+| `scripts/scaffold_plan.py` | 从 baseline + ①②③④ 生成 ⑤⑥ 初稿（plan-draft / 三份 payload） |
+| `scripts/rollback_plan.py` | 从 `calls.jsonl` 逆序生成回滚清单 |
+| `scripts/cost_report.py` | 按用量 JSON + 峰谷价算 token 费用 |
+| `scripts/archive_runs.py` | 按 §5.7 归档超期 run（保留 manifest + 08-execution） |
 | `scripts/snapshot_diff.py` | before/after 快照比对（51 字段） |
 | `scripts/assets_pack.py` | 成员4：纯 base64 / imageName≤200 / MD5 / 体积 / image-map；**图片四关硬闸（精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5 一致）** |
 | `scripts/backfill_image_ids.py` | ⑧-2 后用 uploadImage 返回值回填 imageId（默认落 `.v2.json`） |

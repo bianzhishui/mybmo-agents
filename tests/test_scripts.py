@@ -199,6 +199,46 @@ class TestManifest(RunCase):
         self.assertEqual(r.returncode, 0, r.stdout)
 
 
+class TestTools(RunCase):
+    def test_rollback_plan(self):
+        r = run("rollback_plan.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("uploadImage", r.stdout)
+        self.assertIn("留档", r.stdout)
+
+    def test_cost_report(self):
+        usage = self.tmp / "usage.json"
+        usage.write_text(json.dumps({"rows": [
+            {"agent": "a", "ts": "2026-11-13T15:00:00+08:00",
+             "input_miss": 1000000, "input_hit": 0, "output": 0},
+            {"agent": "a", "ts": "2026-11-14T15:00:00+08:00",
+             "input_miss": 1000000, "input_hit": 0, "output": 0},
+        ]}), encoding="utf-8")
+        r = run("cost_report.py", "--usage", str(usage), "--json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = json.loads(r.stdout)
+        self.assertAlmostEqual(d["total"]["peak_cost"], 2.0, places=4)
+        self.assertAlmostEqual(d["total"]["off_cost"], 1.0, places=4)
+
+    def test_make_baseline(self):
+        rb = self.tmp / "readback.json"
+        rb.write_text(json.dumps({"campaignShoppingTypes": [{
+            "campaignShoppingId": 1, "productId": "1", "eshopType": 1, "transType": 14,
+            "audience": {"interests": "0", "region": "9999999", "excludeTrans": "0"},
+            "material": {"brand": "B", "userPortrait": {"imageId": 9, "astat": 2},
+                         "title": [{"text": "标题文案标题文案", "astat": 2}],
+                         "description": [{"text": "描述文案描述文案"}],
+                         "pictures": [{"imageId": 5, "width": 750, "height": 1000}]},
+        }]}), encoding="utf-8")
+        r = run("make_baseline.py", "--from", str(rb), "--stdout")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = json.loads(r.stdout)
+        c = d["campaignShoppingTypes"][0]
+        self.assertEqual(c["material"]["userPortrait"], {"imageId": 9})
+        self.assertEqual(c["material"]["pictures"], [{"imageId": 5}])
+        self.assertNotIn("astat", json.dumps(c))
+
+
 class TestSnapshotEnums(unittest.TestCase):
     def test_exclude_trans_zero_is_legal(self):
         sys.path.insert(0, str(SCRIPTS))

@@ -395,6 +395,17 @@ API 参数
 }
 ```
 
+### 生成工具（把"手拼"机器化）
+
+| 脚本 | 作用 |
+|---|---|
+| `scripts/make_baseline.py --from <读回.json>` | 从真实读回生成**该账户**的参数骨架（不再手抄 baseline） |
+| `scripts/scaffold_plan.py --run-dir <run>` | 从 baseline + ①②③④ 生成 ⑤ `plan-draft` 与 ⑥ 三份 payload 初稿（占位符/溯源就位，只改差异） |
+| `scripts/rollback_plan.py --run-dir <run>` | 从 `calls.jsonl` 逆序出回滚清单（标注哪些无接口、需人工） |
+| `scripts/cost_report.py --usage <用量.json>` | 按峰谷价目算 token 费用（可复算，不用手算） |
+
+> 生成器只负责"初稿像样"，**不替代审计**：产出后仍必须 `scripts/preflight.sh` 全绿才能进 ⑧。
+
 ### 计划 JSON（核心）
 
 > **⑥ 出 payload 以基线为骨架替换取值，不从零拼。** 骨架文件：`templates/campaign-baseline.json`
