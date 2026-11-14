@@ -64,8 +64,8 @@ API 参数
 | ⑧-3 建词包 | `KeyWordShoppingService.addKeywordPackages` | 写 | ✅ 写实测 | **成员8** | 字段名是 `keywordPackageTypes`；新建 `{packageName, keywordTypes:[{keyword,id:0}]}` |
 | ⑧-5 绑词包 | `KeyWordShoppingService.bindPlanKeywordPackages` | 写 | ✅ 写实测 | **成员8** | **双向语义**：包→计划是**替换**（绑 P2 后 P1 的包被清空）、计划→包是**累加**（同计划绑 A、B → `fcKeywordWtpids="A,B"`）；解绑只能 `updateCampaignShopping` 改 `audience` |
 | ⑧-4 建计划 | `CampaignShoppingService.addCampaignShopping` | 写 | ⚠️ **未实测** | **成员8** | 9 个必填字段，必须先小范围试 |
-| ⑧-1/⑧-6 读计划 | `CampaignShoppingService.getCampaignShopping` | 读 | ✅ 读实测 | 成员8 | 扁平字段名，51 字段表必传 |
-| ⑧-6 开量 | `CampaignShoppingService.updateCampaignShopping` | 写 | ✅ 写实测 | **成员8** | **`material` 整体替换**，必须读-改-写 |
+| ⑧-1/⑧-6 读计划 | `CampaignShoppingService.getCampaignShopping` | 读 | ✅ 读实测 | 成员8 | 扁平字段名。**按需取字段**：只读核对时只请求需要的字段；**只有要写回 `material`/`audience` 时才必须按 51 项读全**（单次可达 107 KB） |
+| ⑧-6 开量 | `CampaignShoppingService.updateCampaignShopping` | 写 | ✅ 写实测 | **成员8** | 两种语义**相反**：**`material` 整体替换**（必须读全再写）；**`audience` 是合并 patch**（只改传入键、未传键保留，**删键没有入口**）。带 `material` 时必须同时带 plan 级 `ideaType`，否则 `901202`「创意类型错误」 |
 | ⑧-2 查图 | `ImageManageService.getImageList` | 读 | ✅ 读实测 | 成员8 | 改名后查询有最终一致延迟；**请求里别传 `fields`**（会过滤掉 `auditStatus`/`reason`）——不传才默认返回 |
 
 ### 单一写入口（本方案的核心约束）
@@ -79,6 +79,8 @@ API 参数
 - **依赖顺序可控**：`imageId` 是建计划的输入依赖，`fcKeywordWtpids` 是绑定的输入依赖——只有同一执行者能保证"图片/词包先于计划"不被并发打乱。
 
 **唯一未实测的是 `addCampaignShopping`**——本方案最大的未知，必须靠"建 1 个 pause 计划"验证掉。
+
+**参数级注意**：`deleteCampaignShopping` **不要传 `optFrom`**（官方文档有、SDK schema 没有，传了会被参数校验拒），只传 `campaignShoppingIds`。
 
 **明确不用的接口**（搜索推广线，本账户上不可用/层级不存在）：
 `CampaignService.addCampaign`、`AdgroupService.addAdgroup`、`KeywordService.addWord`、`CreativeService.addCreative`。
@@ -219,6 +221,8 @@ API 参数
   与审计放行记录（`execution-plan.json`）一致才发；不一致 = 拿旧 payload 烧最后一次重试额度
 - **重试预算硬上限 3 次**：第 1 次失败就要把下一轮所需的**全部改动一次性批量下发**（图 + payload + 审计要点），
   禁止逐个往返；第 3 次再失败彻底停手、转人工后台建计划
+- **⑧-4b 的 pause 收尾属 ⑧ 的既定授权范围**（是建单语义缺陷的必备补救，不是额外写操作），
+  不需要为"补一次 `pause=true`"另开授权；但 `pause=false` 开量仍须 G4 闭环 + 用户书面确认
 - 所有产物写入 `08-execution/`（`preflight` / `execution-plan` / `before-snapshot` / `after-snapshot` / `calls.jsonl`），见[第五节](#五产物存储规范执行工作区)
 - 所有写调用的 `call_id` 必须记录成执行日志（`calls.jsonl`），作为回滚依据
 
@@ -489,8 +493,11 @@ API 参数
 - [ ] **建单/复制后立刻补暂停（必查项）**：`addCampaignShopping` 不认 `pause`，必须紧跟一次
       `updateCampaignShopping {campaignShoppingId, pause:true}`（最小请求体）并回读 `pause=true`
 - [ ] `version == 文件名 .vN`（`scripts/manifest.py verify`）；将发送文件的 sha256 与审计放行记录一致
-- [ ] 若涉及 `updateCampaignShopping`：是否已**读全 51 字段**
-      （漏读 `fengchaoTitle` 会被清空——2026-11-11 真实踩过的坑，见 `mybmo-mcp:docs/campaign-shopping.md`）
+- [ ] 若涉及 `updateCampaignShopping`：改 `material` 时是否已**读全 51 字段**
+      （漏读 `fengchaoTitle` 会被清空——2026-11-11 真实踩过的坑），且**同时带了 plan 级 `ideaType`**（否则 `901202`）
+- [ ] 若涉及 `updateCampaignShopping` 改 `audience`：按**合并语义**理解（只改传入键、未传键保留、**删键无入口**，要"清空"只能改值）
+- [ ] `deleteCampaignShopping` 未传 `optFrom`（SDK 无该字段，会被参数校验拒）
+- [ ] **G4 已闭环**：开量前用户书面确认（表述与实物一致、赠品属实、budget/ocpcBid 终确认）；未闭环只能 `success-paused`
 - [ ] 是否有回读比对方案
 - [ ] 不含 `deleteCampaignShopping` 等不可逆操作（如有，必须单独二次确认）
 - [ ] 产物已按[第五节](#五产物存储规范执行工作区)落盘：`manifest` 状态正确、`before-snapshot` 存在、`06-payloads` 通过自动校验

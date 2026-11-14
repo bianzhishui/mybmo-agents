@@ -63,6 +63,8 @@ whenToUse: 当一个任务是电商推广计划搭建链路的一环——商品
 - **编号一致**：提示词块 `img-001` = 文件名 `img-001.png` = `image-map.json` 的 `file` 字段。三者必须对得上。名字对不上的图（`微信截图.png`）先重命名，**禁止猜对应关系**。
 - **提示词必须自包含**：7 个字段（用途/比例与最小边/画面要素/是否允许文字入图/负面词/合规/完整提示词）。连接器没有文生图能力，别人拿着这段就能出图。
 - 谁出图都行（人、外部 API、将来某天接入的文生图 MCP），**只要守住命名与字段契约，下游一步都不用改**。
+- **编号失效必须当场声明**：某张图的提示词块最终没有对应产出（如改用了官方商品主图），要在**同一个
+  `image-prompts.md` 里追加"作废声明"**，写清 编号→无产出、最终改用哪张；保证"编号-文件-映射"三方仍可对账。
 
 ## 2. 交接契约（团长派活时必须给全）
 
@@ -186,7 +188,8 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 2. 接口：只用 `KeyWordShoppingService` / `ImageManageService` / `CampaignShoppingService`。
 3. 读写分离：只读端点人人可用，**写能力只在成员8 的工具列表里**（结构保证）。
 4. 词包：先成包再绑计划。`bindPlanKeywordPackages` **双向**——包→计划替换、计划→包累加；解绑只能 update 改 audience。
-5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。`userPortrait`（120×120）必带；
+5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。**`audience` 在 update 里是合并语义**
+   （只改传入键、未传键保留、删键无入口），与 `material` 相反。`userPortrait`（120×120）必带；
    `pictures` 尺寸走**精确宽高白名单**（370×245/1140×640/750×1000）、≤18 张；`audience` 只有 `interests` 键级必带；
    ⑥ 出 payload 以 `templates/campaign-baseline.json` 为骨架替换取值，不从零拼。
 6. 图片：必须先 `uploadImage(addImage=true)` 拿真实 `imageId`（由成员8 执行）；连接器无生成能力。

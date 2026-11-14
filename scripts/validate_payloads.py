@@ -376,6 +376,18 @@ def check_audience_enums(payload: Any, report: Report) -> None:
         else:
             report.ok(f"plan[{idx}].audience.interests", "interests 已带")
 
+        # P1-1：region 传非法值不报错、会被静默放大为"不限"。只收地域码。
+        if "region" in audience:
+            region = str(audience["region"])
+            if re.fullmatch(r"\d+(,\d+)*", region):
+                report.ok(f"plan[{idx}].audience.region", f"= {region!r}（地域码形态合法）")
+            else:
+                report.fail(
+                    f"plan[{idx}].audience.region",
+                    f"= {region!r} 不是地域码（只收数字，逗号分隔；不定向写 9999999）。"
+                    "传中文/非法值不会报错，会被静默放大成不限",
+                )
+
 
 def check_plan_payload_consistency(
     payload: Any, run_dir: Path, report: Report, explicit_map: str | None = None

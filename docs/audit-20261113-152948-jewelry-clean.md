@@ -495,3 +495,15 @@ gantt
 | 建议12（P2-12） | `manifest.json` 增 `pendingGates`；`manifest.py gate` 收口；未闭环不得置 `finalStatus=success`（只能 `success-paused`） | 本 run G4=open，`final success` 被拒（exit=1），`success-paused` 放行 |
 | 6.5 #10（bind 双向） | 方案 §三路由表 / §八铁律4 / skill §8 更正：**包→计划替换、计划→包累加**，解绑只能 update 改 audience | 原"替换式、不是追加"表述已改 |
 | 6.5 #11（清单 fields） | 路由表 ⑧-2 查图行补"别传 `fields`" | — |
+
+### 修订补充（2026-11-14 三轮）：剩余接口语义与授权边界
+
+| 项 | 修复落点 | 结论 |
+|---|---|---|
+| 6.5 #1 update 两种语义 | 路由表 ⑧-6 行 + 铁律5 + skill：**`material` 整体替换 / `audience` 合并 patch（只改传入键、删键无入口）** | 已改正；原文档未提 audience 合并 |
+| 6.5 #3 大响应按需取字段 | 路由表 ⑧-1/⑧-6 行：只读核对只请求所需字段，**只有要写回 material/audience 才读全 51 项** | 已改正；原文档写"51 字段必传" |
+| 6.5 #4 delete 不传 optFrom | §三新增"参数级注意" + 审计清单第5层 | 已补 |
+| P0-6 ideaType | 路由表 ⑧-6 行 + 审计清单第5层独立必查项（不只 4b 单元格） | 已补 |
+| P1-11 授权边界 | 成员8 硬约束：⑧-4b 的 pause 收尾属既定授权范围，开量仍需 G4 + 书面确认 | 已补 |
+| P1-1 region 静默放大 | `validate_payloads.py` 机器校验：`audience.region` 必须是地域码（数字/逗号）否则 FAIL；文档/清单写"必须回读" | 正例 PASS；反例 `region="全国"` FAIL |
+| 建议10 编号失效声明 | skill §1.2：提示词编号无对应产出须在同文件追加"作废声明" | 已补 |
