@@ -692,7 +692,7 @@
               args:
                 - "-y"
                 - "mcp-remote@latest"
-                - "https://baiduads.pandabase.top/mcp"
+                - "https://baiduads.pandabase.top:8443/mcp"
                 - "--transport"
                 - "http-only"
                 - "--disable-resource-parameter"
@@ -732,7 +732,7 @@
         args:
           - "-y"
           - "mcp-remote@latest"
-          - "https://baiduads.pandabase.top/mcp/readonly"
+          - "https://baiduads.pandabase.top:8443/mcp/readonly"
           - "--transport"
           - "http-only"
           - "--disable-resource-parameter"
