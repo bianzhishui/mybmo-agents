@@ -27,9 +27,13 @@ PY = sys.executable
 SCRIPTS = ROOT / "scripts"
 
 
-def run(script: str, *args: str) -> subprocess.CompletedProcess:
+def run(script: str, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
+    import os as _os
+    e = _os.environ.copy()
+    if env:
+        e.update(env)
     return subprocess.run(
-        [PY, str(SCRIPTS / script), *args], capture_output=True, text=True
+        [PY, str(SCRIPTS / script), *args], capture_output=True, text=True, env=e
     )
 
 
@@ -431,6 +435,37 @@ class TestAnchor(RunCase):
                  "--strict-anchor", "--log", str(log))
         self.assertEqual(r2.returncode, 1)
         self.assertIn("日志链断裂", r2.stdout)
+
+
+class TestAnchorShard(RunCase):
+    def test_default_writes_per_run_shard(self):
+        anchor_dir = self.tmp / "anchor"
+        env = {"ECWF_ANCHOR_DIR": str(anchor_dir)}
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rid = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))["runId"]
+        shard = anchor_dir / f"{rid}.log"
+        self.assertTrue(shard.is_file(), r.stdout)
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--strict-anchor", env=env)
+        self.assertEqual(r2.returncode, 0, r2.stdout)
+        self.assertIn("三方一致", r2.stdout)
+
+    def test_two_runs_parallel_shards(self):
+        import shutil as _sh
+        a = self.tmp / "a"; b = self.tmp / "b"
+        _sh.copytree(self.run_dir, a); _sh.copytree(self.run_dir, b)
+        # 两个 run 用不同 runId 才能分片
+        for d, rid in ((a, "run-a"), (b, "run-b")):
+            m = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+            m["runId"] = rid
+            (d / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        env = {"ECWF_ANCHOR_DIR": str(self.tmp / "anchor")}
+        for d in (a, b):
+            r = run("manifest.py", "--run-dir", str(d), "anchor", env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        for d in (a, b):
+            r = run("manifest.py", "--run-dir", str(d), "verify", "--strict-anchor", env=env)
+            self.assertEqual(r.returncode, 0, r.stdout)
 
 
 class TestSnapshotEnums(unittest.TestCase):

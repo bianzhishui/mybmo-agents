@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -40,7 +41,9 @@ from pathlib import Path
 from _runbook import resolve_run_dir as _resolve_run_dir
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# 旧版全局日志（迁移期只读兼容）；新版按 run 分片写 <ANCHOR_DIR>/<runId>.log
 DEFAULT_ANCHOR_LOG = PROJECT_ROOT / "audit" / "approvals.log"
+ANCHOR_DIR = Path(os.environ.get("ECWF_ANCHOR_DIR") or (PROJECT_ROOT / "audit" / "approvals"))
 
 STAGES = [
     "01-product",
@@ -207,7 +210,10 @@ def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool =
                         print(f"[FAIL] {stage:12} sha256 与审计放行不符：现场 {digest[:16]}… ≠ {ap_sha[:16]}…")
                     elif ap_sha == digest:
                         print(f"[ok]   {stage:12} 与 07-audit/approval.json 一致（审计放行 sha）")
-    verify_anchor(run_dir, manifest, log_path or DEFAULT_ANCHOR_LOG, strict_anchor, fails, warns)
+    resolved_log, fell_back = resolve_verify_log(run_dir, manifest, str(log_path) if log_path else None)
+    if fell_back:
+        warns.append("锚定：未找到 run 分片日志，回退旧全局 audit/approvals.log")
+    verify_anchor(run_dir, manifest, resolved_log, strict_anchor, fails, warns)
     open_gates = [
         gid for gid, g in (manifest.get("pendingGates") or {}).items()
         if (g or {}).get("status", "open") != "closed"
@@ -283,6 +289,23 @@ def lint_files(run_dir: Path) -> int:
     return 1 if problems else 0
 
 
+def anchor_log_path(run_dir: Path, manifest: dict, override: str | None) -> Path:
+    if override:
+        return Path(override)
+    rid = manifest.get("runId") or run_dir.name
+    return ANCHOR_DIR / f"{rid}.log"
+
+
+def resolve_verify_log(run_dir: Path, manifest: dict, override: str | None) -> tuple[Path, bool]:
+    """返回 (路径, 是否为旧全局日志回退)。优先 run 分片，分片不存在再回退全局。"""
+    if override:
+        return Path(override), False
+    shard = anchor_log_path(run_dir, manifest, None)
+    if shard.is_file() and shard.read_text(encoding="utf-8").strip():
+        return shard, False
+    return DEFAULT_ANCHOR_LOG, True
+
+
 def _read_log(path: Path) -> list[dict]:
     if not path.is_file():
         return []
@@ -319,7 +342,7 @@ def _log_chain_broken(path: Path) -> tuple[int, int]:
     return broken, len(rows)
 
 
-def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path) -> int:
+def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path | None) -> int:
     if manifest.get("stages", {}).get("07-audit", {}).get("status") != "done":
         print("拒绝锚定：07-audit 尚未 done", file=sys.stderr)
         return 1
@@ -345,6 +368,7 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path) 
         print(f"拒绝锚定：approval.sha256 与现场 payload 不符（{approval['sha256'][:16]}≠{payload_sha[:16]}）", file=sys.stderr)
         return 1
     approval_sha = sha256_of(approval_path)
+    log_path = log_path or anchor_log_path(run_dir, manifest, None)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     # 幂等：若该 run 最后一次记录已是同一组 digest，就不重复追加
     existing = [r for r in _read_log(log_path)
@@ -370,6 +394,12 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path) 
         "prev": hashlib.sha256(prev_raw.encode("utf-8")).hexdigest() if prev_raw else "",
     }
     with log_path.open("a", encoding="utf-8") as fh:
+        try:  # 同机并发保护（跨机无效，靠"按 run 分片"本身避免竞争）
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
         fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     manifest["approvalSha256"] = approval_sha
     save(run_dir, manifest)
@@ -476,12 +506,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_anchor = sub.add_parser("anchor", help="审计锚定：写 manifest.approvalSha256 + approvals.log")
     p_anchor.add_argument("--approval", default="07-audit/approval.json")
-    p_anchor.add_argument("--log", default=str(DEFAULT_ANCHOR_LOG))
+    p_anchor.add_argument("--log", default=None, help="覆盖日志路径（默认 audit/approvals/<runId>.log）")
 
     p_verify = sub.add_parser("verify", help="版本↔文件名绑定 + 将发送文件 sha256 对账")
     p_verify.add_argument("--record", action="store_true", help="把 06-payloads 执行版 sha256 写回 manifest")
     p_verify.add_argument("--strict-anchor", action="store_true", help="缺锚定记录/日志链断裂即 FAIL")
-    p_verify.add_argument("--log", default=str(DEFAULT_ANCHOR_LOG))
+    p_verify.add_argument("--log", default=None, help="覆盖日志路径（默认按 run 分片，回退旧全局日志）")
     p_verify.add_argument("--require-approval", action="store_true", help="缺 07-audit/approval.json 即 FAIL（推荐 ⑧ 前用）")
 
     args = ap.parse_args(argv)
@@ -520,13 +550,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "verify":
         rc = verify(run_dir, manifest, args.record, args.require_approval,
-                    args.strict_anchor, Path(args.log))
+                    args.strict_anchor, Path(args.log) if args.log else None)
         if args.record:
             save(run_dir, manifest)
         return rc
 
     if args.cmd == "anchor":
-        return do_anchor(run_dir, manifest, args.approval, Path(args.log))
+        return do_anchor(run_dir, manifest, args.approval, Path(args.log) if args.log else None)
 
     if args.cmd == "retry":
         entry = manifest.setdefault("stages", {}).setdefault(args.stage, {"status": "pending"})
