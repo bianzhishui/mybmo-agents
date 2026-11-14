@@ -1,17 +1,17 @@
 {
   "_doc": "⑥ 出 payload 的【骨架】。取值以本账户一条真实计划的读回为准，⑥ 只做『替换取值』，禁止按 schema 从零拼。",
   "_provenance": {
-    "account": "main（baidu-YF电商-玛卡快消01）",
-    "sourcePlanId": 2387079078,
+    "sampleAccount": "实测样本账户：baidu-YF电商-玛卡快消01（**仅用于证明 audience 键集合 / material 要素齐全，不是绑定**）",
+    "samplePlanId": 2387079078,
     "readCapability": "CampaignShoppingService.getCampaignShopping（只读）",
     "callId": "afd94c95cacd",
     "readAt": "2026-11-13T16:08:36+08:00",
     "rawReadback": ".ecwf/runs/20261113-152948-jewelry-clean/08-execution/after-snapshot.json#rawReadback",
-    "keySetCrossCheck": "audience 键集合与本账户在投计划 2079251858 / 2376038055 一致（12 键 + 服务端默认 excludeTrans + 绑包后 fcKeywordWtpids = 14 键）；用户与审计均可复核。",
-    "note": "本文件是骨架不是成品：所有 <尖括号> 处替换为本单取值；未标注的数值型字段（region/sex/age/interests…）可直接沿用（=不限）。"
+    "keySetCrossCheck": "结构（14 键 / 全要素）来自本例；**换账户必须按该账户自己的读回重建**，不同账户的 eshopType / transType / region 可能不同",
+    "note": "本文件是【结构骨架】。所有 <尖括号> 必须替换；标为『不限/默认』的 audience 值（0 / 9999999 / \"\"）是平台常量，可跨账户沿用。"
   },
   "_easyErrors": [
-    "① material.userPortrait 必带（120×120 品牌头像）。缺 → 901217「创意设置品牌头像错误」；证据 call f544250ba6ae 失败 / 98b453c47249 成功。复用图库已过审头像即可（本例 imageId=15505964077，astat=2、120×120）。",
+    "① material.userPortrait 必带（120×120 品牌头像）。缺 → 901217「创意设置品牌头像错误」；证据 call f544250ba6ae 失败 / 98b453c47249 成功。复用本账户图库里已过审的头像即可（示例：某账户 120×120、auditStatus=2 的头像；**示例值不可跨账户套用**）。",
     "② audience 的键级必带只有 interests（缺 → 901216「兴趣错误」；空对象 {} → 901214「定向信息为空」）。其余 13 键可省，服务端会补默认值（region=9999999、keywords=\"\"、fcKeywordWtpids=\"\"、intelligentWeight=\"0\"…），所以『写 12 键、读回 13 键（多 excludeTrans）、绑包后 14 键』是正常现象，对账以读回为准。",
     "③ material.pictures 是【精确宽高白名单、方向固定】：商品推广只有 370×245 / 1140×640 / 750×1000（自定义直播推广只有 1140×640）。不是『宽高比』也不是『最小尺寸』——375×248、960×540（同为 16:9）、1000×750、640×1140 全部被 901217 拒；750×1000 过、1000×750 不过。张数上限 18（19 张 → 901217「创意设置图片数量超过上限」，schema 无 maxItems、拦在服务端）。"
   ],
@@ -26,25 +26,53 @@
     {
       "campaignShoppingName": "<商品>-<策略>-<YYYYMMDD>",
       "pause": true,
-      "targetType": 1,
-      "eshopType": 1,
+      "targetType": "<1 商品 / 2 直播>",
+      "eshopType": "<1 度小店 / 4 健康商城>",
       "productId": "<getProduct 实测 productId>",
       "productName": "<getProduct 实测 productName>",
-      "campaignType": 1,
-      "budget": 100.0,
-      "ocpcBid": 1.24,
-      "transType": 90,
+      "campaignType": "<1 控成本 / 4 放量>",
+      "budget": "<预算：0=不限，否则 [50, 9999999.99]>",
+      "ocpcBid": "<出价：[0.2, 99999]，两位小数>",
+      "transType": "<度小店[14,90] / 健康商城[90] / 直播[80,81,82,83,84]>",
       "ideaType": 1,
       "startTime": "<YYYY-MM-DD>",
       "endTime": "9999-01-01",
       "schedule": [
-        { "weekDay": 1, "startHour": 0, "endHour": 24 },
-        { "weekDay": 2, "startHour": 0, "endHour": 24 },
-        { "weekDay": 3, "startHour": 0, "endHour": 24 },
-        { "weekDay": 4, "startHour": 0, "endHour": 24 },
-        { "weekDay": 5, "startHour": 0, "endHour": 24 },
-        { "weekDay": 6, "startHour": 0, "endHour": 24 },
-        { "weekDay": 7, "startHour": 0, "endHour": 24 }
+        {
+          "weekDay": 1,
+          "startHour": 0,
+          "endHour": 24
+        },
+        {
+          "weekDay": 2,
+          "startHour": 0,
+          "endHour": 24
+        },
+        {
+          "weekDay": 3,
+          "startHour": 0,
+          "endHour": 24
+        },
+        {
+          "weekDay": 4,
+          "startHour": 0,
+          "endHour": 24
+        },
+        {
+          "weekDay": 5,
+          "startHour": 0,
+          "endHour": 24
+        },
+        {
+          "weekDay": 6,
+          "startHour": 0,
+          "endHour": 24
+        },
+        {
+          "weekDay": 7,
+          "startHour": 0,
+          "endHour": 24
+        }
       ],
       "audience": {
         "regionType": "0",
@@ -63,24 +91,42 @@
         "fcKeywordWtpids": ""
       },
       "material": {
-        "brand": "<用户确认的 brand>",
+        "brand": "<用户确认的 brand，禁止沿用样本账户>",
         "userPortrait": {
-          "imageId": 15505964077
+          "imageId": "<本账户已过审品牌头像 imageId（120×120）>"
         },
         "title": [
-          { "text": "<9-60 字符标题 #1>" },
-          { "text": "<9-60 字符标题 #2>" }
+          {
+            "text": "<9-60 字符标题 #1>"
+          },
+          {
+            "text": "<9-60 字符标题 #2>"
+          }
         ],
         "description": [
-          { "text": "<9-80 字符描述 #1>" },
-          { "text": "<9-80 字符描述 #2>" }
+          {
+            "text": "<9-80 字符描述 #1>"
+          },
+          {
+            "text": "<9-80 字符描述 #2>"
+          }
         ],
         "pictures": [
-          { "imageId": "PENDING:img-001.png" }
+          {
+            "imageId": "PENDING:img-001.png"
+          }
         ],
         "fengchaoTitle": [],
         "videos": []
       }
     }
+  ],
+  "_perAccountFields": [
+    "productId / productName —— getProduct 实测（禁止跨账户沿用）",
+    "eshopType（1 度小店 / 4 健康商城）、transType（度小店[14,90]/健康商城[90]/直播[80-84]）—— 由账户与商品决定，必须重核",
+    "brand —— 用户确认（禁止沿用样本账户的品牌名）",
+    "material.userPortrait.imageId —— **本账户图库里已过审的品牌头像（120×120）**；跨账户沿用＝把别人的品牌头像挂到本账户计划上，属错误素材",
+    "budget / ocpcBid —— 用户确认的出价预算，禁止套用样本值",
+    "audience.region —— 不限用 9999999；要定向则传本账户可用的地域码并回读校验"
   ]
 }

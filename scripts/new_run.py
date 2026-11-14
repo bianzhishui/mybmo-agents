@@ -12,7 +12,7 @@
 
 用法：
     python3 scripts/new_run.py --slug jewelry-clean
-    python3 scripts/new_run.py --slug jewelry-clean --account main --base /tmp/ecwf
+    python3 scripts/new_run.py --slug my-product --account <account-alias> --base /tmp/ecwf
     python3 scripts/new_run.py --slug jewelry-clean --allow-parallel
     python3 scripts/new_run.py --slug x --dry-run
 

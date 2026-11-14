@@ -6,7 +6,7 @@
 > 本文描述"**图片+卖点 → 关键词 → 创意 → 计划 → API 参数 → 审计 → 实施**"这条自动化链路
 > 在**电商推广线（CampaignShopping）**上的落地设计。
 >
-> 依据：全部字段与接口约束来自实测与后台抓包（账户 `baidu-YF电商-玛卡快消01`），
+> 依据：全部字段与接口约束来自实测与后台抓包（**实测样本账户** `baidu-YF电商-玛卡快消01`；本方案是通用能力，不绑定该账户——换账户只需重读该账户自己的基线，见 §六）
 > 不是文档推断。字段口径详见 `mybmo-mcp:docs/ec-shopping-official.md`，
 > 计划读写速查见 `mybmo-mcp:docs/campaign-shopping.md`，
 > 词包见 `mybmo-mcp:docs/keyword-packages.md`，图片见 `mybmo-mcp:docs/image-management.md`。
@@ -306,7 +306,7 @@ API 参数
 {
   "runId": "20261113-114432-jewelry-clean",
   "dshSessionId": "session-xxxx",
-  "account": "main",
+  "account": "<account-alias>",
   "createdAt": "2026-11-13T11:44:32+08:00",
   "stages": {
     "01-product":  {"status": "done",     "by": "成员1", "file": "01-product/required-fields.json", "version": 1},
@@ -386,13 +386,13 @@ API 参数
       "campaignShoppingName": "珠宝清洗剂-场景拉新-20261113",
       "pause": true,
       "targetType": 1,
-      "eshopType": 1,
+      "eshopType": "<1 度小店 / 4 健康商城>",
       "productId": "待核实",
-      "productName": "珠宝专用清洗剂",
-      "campaignType": 1,
-      "budget": 100,
-      "transType": 14,
-      "ocpcBid": 72.00,
+      "productName": "<getProduct 实测 productName>",
+      "campaignType": "<1 控成本 / 4 放量>",
+      "budget": "<预算：0=不限，否则 [50, 9999999.99]>",
+      "transType": "<度小店[14,90] / 健康商城[90] / 直播[80-84]>",
+      "ocpcBid": "<出价：[0.2,99999]，两位小数>",
       "startTime": "2026-11-14",
       "endTime": "9999-01-01",
       "schedule": [{"weekDay": 1, "startHour": 0, "endHour": 24}],
@@ -413,8 +413,8 @@ API 参数
       },
       "ideaType": 1,
       "material": {
-        "brand": "玛卡商贸",
-        "userPortrait": {"imageId": 15505964077},
+        "brand": "<用户确认的 brand>",
+        "userPortrait": {"imageId": "<本账户已过审品牌头像 imageId（120×120）>"},
         "title": [{"text": "首饰发黄发乌别扔！一瓶在家洗得光亮如新"}],
         "description": [{"text": "深层去污不伤材质，金银玉石都能用"}],
         "pictures": [{"imageId": "PENDING:img-001.png"}]
@@ -426,6 +426,10 @@ API 参数
 
 > 说明：`region` 只传地域码（`9999999`=不限）；传非法值（如中文「全国」）**不报错但被静默放大成不限**，
 > 写完必须回读 `region` 校验。`pictures[].imageId` 的占位符统一 `PENDING:<img-00N>.<ext>`。
+>
+> **通用性**：`eshopType / transType / productId / brand / userPortrait.imageId / budget / ocpcBid`
+> 都是**按账户与商品取值**，示例里一律留尖括号占位。可跨账户沿用的只有平台常量
+> （`region=9999999`、`sex/age/interests="0"`、`excludeTrans="0"`、`schedule/endTime` 形态）。
 
 ---
 

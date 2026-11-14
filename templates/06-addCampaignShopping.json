@@ -59,5 +59,6 @@
         ]
       }
     }
-  ]
+  ],
+  "_perAccountFields": "按账户/商品取值、禁止沿用他账户：productId/productName（getProduct 实测）、eshopType（1 度小店 / 4 健康商城）、transType（配套 eshopType）、brand（用户确认）、userPortrait.imageId（本账户已过审 120×120 头像）、budget/ocpcBid（用户确认）。可跨账户沿用：region=9999999、sex/age/interests=\"0\"、excludeTrans=\"0\"、schedule/endTime 形态。"
 }
