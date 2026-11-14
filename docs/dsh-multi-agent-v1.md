@@ -7,6 +7,10 @@
 > 依据：本机 `DSH_PROFILE=desktop`、`DSH_INSTALL_DIR=…/app.asar/dsh/node_modules/@deepseek-ai/dsh` 的
 > 已安装包 README 与出厂 preset 文件（`presets/standard.patch.yml`、`presets/minimal.patch.yml`）。
 > 标注「待实测」的条目没有在线上验证过。
+>
+> **状态（2026-11-14）：本文是 v1 的"执行环境实现记录"，其中 P4（首个灰度单）已于 2026-11-13 跑通；
+> 运行口径（字段约束、闸门、脚本）以 `docs/ec-shopping-workflow-v2.md` 与 skill `ecwf-protocol` 为准。
+> v1 之后新增的机制见文末「§十一 2026-11-14 补充」。**
 
 ---
 
@@ -294,11 +298,12 @@ install_bundle  target=/Users/biandc/Desktop/mybmo-agents/adapters/dsh
 | P0 | 方案文档 + bundle YAML + 协议 skill **（本次已落）** | — | `adapters/dsh/`、`.agents/skills/ecwf-protocol/`、本文 |
 | P1 | 装 bundle + 验证清单 1–5 | P0 | roster 里 9 个 preset 可用 |
 | P2 | 验证 6–8（preset 内 MCP）+ Host 级 MCP 下线 | P1 | 写入口真正唯一 |
-| P3 | 脚本补齐：`new_run` / `manifest` / `record_call` / `snapshot_diff` / `assets_pack` / `backfill_image_ids` | P1 | ✅ 已完成，全部实测（含超限/同 MD5/rejected 守卫/快照告警） |
-| P4 | 首个灰度单：1 计划 / 1 词包 / 1 图、`pause=true` | P2+P3 | `addCampaignShopping` 实测结论（唯一未知） |
-| P5 | 批量与归档（`archive.py` 可选） | P4 成功 | 可重复生产 |
+| P3 | 脚本补齐：`new_run` / `manifest` / `record_call` / `snapshot_diff` / `assets_pack` / `backfill_image_ids` | P1 | ✅ 已完成，全部实测（含超限/同 MD5/rejected 守卫/快照告警）；**后续已扩到 14 个脚本 + 57 例回归，见 §十一** |
+| P4 | 首个灰度单：1 计划 / 1 词包 / 1 图、`pause=true` | P2+P3 | ✅ **2026-11-13 已跑通**：`addCampaignShopping` 建单成功，`campaignShoppingId=2387079078`（第 4 次尝试；前 3 次分别暴露 userPortrait/图片尺寸/audience 必带键问题，见审计报告） |
+| P5 | 批量与归档（`archive_runs.py`） | P4 成功 | 可重复生产 |
 
-**P4 之前不要批量**：`addCampaignShopping` 至今 `verified: null`，这是整个方案唯一的真实未知。
+~~**P4 之前不要批量**：`addCampaignShopping` 至今 `verified: null`，这是整个方案唯一的真实未知。~~
+**（2026-11-13 更新）** 灰度单已完成，`addCampaignShopping` 不再是未知；批量前仍应遵守"1 计划/1 词包/1 图"的收敛原则。
 
 ---
 
@@ -306,7 +311,7 @@ install_bundle  target=/Users/biandc/Desktop/mybmo-agents/adapters/dsh
 
 | 风险 | 影响 | 处置 |
 |---|---|---|
-| `addCampaignShopping` 从未实测 | 建计划可能直接失败或字段被静默忽略 | P4 灰度单验证，`pause=true`，先 1 条 |
+| ~~`addCampaignShopping` 从未实测~~ **已实测（2026-11-13）** | 其真实风险转为：`pause` 参数不生效、`pictures` 精确尺寸/≤18 张、`audience` 只有 `interests` 必带 | 已在 `workflow-v2` 与机检中固化（建单后必须补 `pause`；尺寸/张数/必带键均有闸） |
 | 旧 Host 级全量行未下线时，隔离被绕开 | 成员仍能调写工具 | 下线 `mcp-pandabase-mybmo`（§5.3.1），可随时恢复 |
 | 子 agent 权限继承会话沙箱 | 写不进 `.ecwf/` 或写到工作区外 | 工作目录固定在仓库内，`ECWF_HOME` 不设外路径 |
 | `material` 整体替换 + `fengchaoTitle` 读不回 | 回滚不了 | `before-snapshot.json` 必须在改前落盘 |
@@ -330,12 +335,38 @@ mybmo-agents/
 │   └── dsh-multi-agent-v1.md               # 本文（执行环境）
 ├── schemas/  templates/                    # 校验基准与产物模板
 └── scripts/
-    ├── _runbook.py                # 公共层：ECWF_HOME、规范 runId、resolve_run_dir
-    ├── new_run.py                 # 建 run（8 目录 + .gitignore + manifest）
-    ├── manifest.py                # 状态机 show/set/next/object
-    ├── record_call.py             # 追加 calls.jsonl
-    ├── snapshot_diff.py           # before/after 比对 + 3 项专项告警
-    ├── assets_pack.py             # 成员4：base64/命名/MD5/体积/映射表
-    ├── backfill_image_ids.py      # ⑧-2 回填 imageId（默认落 .v2.json）
-    └── validate_payloads.py       # §5.6 预检（schema + 编造检测 + 业务规则）
+    ├── _runbook.py                # 公共层：ECWF_HOME、STAGES、版本号、image-map 选版、resolve_run_dir
+    ├── _enums.py                  # 共用枚举（excludeTrans 含 "0" 等）
+    ├── preflight.sh               # ⑧-1 一键预检（5 项）
+    ├── new_run.py                 # 建 run（8 目录 + .gitignore + manifest + 同 slug 检查）
+    ├── manifest.py                # 状态机 + verify / anchor / gate / retry / lint-files / final
+    ├── gate_check.py              # 启动/开量/删除硬闸
+    ├── record_call.py             # 追加 calls.jsonl（prev 链 + account）
+    ├── snapshot_diff.py           # before/after 比对（可 --fail-on-unexpected）
+    ├── assets_pack.py             # 成员4：四关（尺寸/张数/内容自查/md5）+ base64/命名/映射
+    ├── backfill_image_ids.py      # ⑧-2 回填 imageId（精确匹配，默认落 .vN+1）
+    ├── validate_payloads.py       # §5.6 预检（schema/占位/尺寸/枚举/追溯/自述/链）
+    ├── scaffold_plan.py           # ⑤⑥ 初稿生成
+    ├── make_baseline.py           # 从读回文件生成账户骨架
+    ├── rollback_plan.py           # calls.jsonl → 回滚清单
+    ├── reconcile.py               # 未知结果对账清单
+    ├── cost_report.py             # 用量 → 峰谷费用
+    └── archive_runs.py            # 归档超期 run
 ```
+
+---
+
+## 十一、2026-11-14 补充：v1 之后新增的机制（口径以 workflow-v2 / skill 为准）
+
+| 机制 | 说明 |
+|---|---|
+| **审计放行件** | 成员7 通过时落 `07-audit/approval.json`（payload + sha256 + pass + evidence）；08 未拿到不得置 done |
+| **审计锚定** | 团长 `manifest.py anchor`：`sha256(approval)` 写入 `manifest.approvalSha256` + `audit/approvals/<runId>.log`（按 run 分片、prev 链、入 git）；`verify --strict-anchor` 三方比对 |
+| **人工闸 G1~G6** | `manifest.pendingGates`；开量前 `gate_check --for unpause` 要求全 closed + `user-confirmation.json` |
+| **启动/删除闸** | `gate_check --for execute/delete`（01~07 done + approval pass + 已锚定 / 删除二次确认） |
+| **一键预检** | `scripts/preflight.sh`（validate + verify + lint-files + snapshot_diff + gate_check） |
+| **机检加固** | 占位文本、图片尺寸白名单、`region` 形制、⑤↔⑥ 追溯键（多计划）、calls/approvals hash 链、账户一致性、未知文件/目录 |
+| **状态机** | `version == 文件名 .vN` 强绑定；未闭环闸不许 `final success`；`retry` 硬上限 3 次 |
+| **回归与 CI** | `tests/` 57 例；`.github/workflows/ci.yml` |
+
+> 单一写入口的结论不变：写能力只在成员8 的 preset 里；新增的闸门是"让越权/伪造**可发现**"，不是替代权限隔离。
