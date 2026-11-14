@@ -56,6 +56,11 @@
                 发现成员产物不合格时，用 `send_message` 把具体问题发回同一个子 agent（本地子 agent 可续），
                 要求落新版本文件（`xxx.v2.json`），禁止原地覆盖，并更新 manifest 的 `retryTo` / `version`。
 
+                ## 等待与重试预算（硬上限 3 次）
+                - 重试预算**硬上限 3 次**；第 3 次仍失败就转人工后台建计划，不再自动重试。
+                - **第 1 次失败就要批量下发下一轮的全部改动**（图 + payload + 审计要点一次性给全），
+                  禁止"改一处 → 等一回 → 再改一处"的逐个往返。
+
                 ## 收尾
                 必须等所有子 agent 的完成通知到齐再给用户结论。任何一步失败立即停手，报告失败步骤与 `call_id`。
           - id: agent-instructions
@@ -373,6 +378,14 @@
                 - `04-assets/image-map.json`，按 `templates/04-image-map.json`：
                   `{file, base64File, imageName, usedIn, imageId: null, md5}`
 
+                ## 图片四关硬闸（`scripts/assets_pack.py` 已机器化，不过就不发上传调用）
+                ① 尺寸**精确宽高白名单、方向固定**：商品推广只有 370×245 / 1140×640 / 750×1000；
+                   禁止按"宽高比/最小尺寸"推导（960×540、1000×750、640×1140 实测全被 901217 拒）。
+                ② 张数 ≤18。
+                ③ 内容红线自查（AI 水印 / 使用前后对比 / 绝对化用语）——**这是我方审计口径，不是平台拒审**，
+                   用 `--content-attest` 逐张声明。
+                ④ md5 与 `04-assets/image-map.json` 一致。
+
                 ## 硬约束
                 - 本角色**不调用任何写能力**，包括 uploadImage —— 上传由成员8 在 ⑧-2 执行。只读查询（如 getImageList 查重）允许。
                 - base64 必须逐张校验可解码；单张 ≤10MB、整批 ≤10MB、单次 ≤20 张。
@@ -434,7 +447,8 @@
                 `03-copy/copy.json`、`04-assets/image-map.json`。
 
                 ## 输出（只写这一个目录）
-                `05-plan/plan-draft.json`，按 `templates/05-plan-draft.json`，结构见
+                `05-plan/plan-draft.json`，按 `templates/05-plan-draft.json`（⑥ 出 payload 会以
+                `templates/campaign-baseline.json` 为骨架替换取值，本草案的 audience 键集合要与之一致），结构见
                 `docs/ec-shopping-workflow-v2.md` §六：计划名、targetType、eshopType、productId、productName、
                 transType、campaignType、budget、ocpcBid、schedule、audience、material。
 
@@ -503,6 +517,11 @@
                 - `06-payloads/uploadImage.json`
                 - `06-payloads/addCampaignShopping.json`
                 三份都必须符合 `schemas/` 下同名 schema；每个字段旁注明来源或"待核实"。
+
+                ## 骨架优先（不从现在拼）
+                **以 `templates/campaign-baseline.json` 为骨架替换取值**，不从 schema 从零拼。骨架里已有
+                `audience` 全 14 键与 `material` 全要素（brand/userPortrait/title/description/pictures），
+                并把三个易错点写在 `_easyErrors`：userPortrait 必带、interests 必带、picture 尺寸/张数。
 
                 ## 硬约束
                 - 参数名一律**驼峰**（`campaignShoppingName`、`keywordPackageTypes`）。
@@ -645,11 +664,15 @@
                 | 2 | 图片入库：`uploadImage(addImage=true)`，用成员4 的 base64 | 返回 `imageId`，回填 `04-assets/image-map.json` 与 payload |
                 | 3 | 建词包：`addKeywordPackages` | 返回 `packageId`，`getKeywordPackages` 回读存在 |
                 | 4 | 建计划：`addCampaignShopping`，**`pause=true`**，material 引用步骤2 的 `imageId` | 返回 `campaignShoppingId` |
+                | 4b | **立即补暂停**：`updateCampaignShopping {campaignShoppingId, pause:true}`（最小请求体，不要全量读-改-写） | 回读 `pause=true`。建单不认 pause（回显 true、落库 false/status=20），不补=以为暂停其实已进审核 |
                 | 5 | 绑词包：`bindPlanKeywordPackages`（**替换式**） | 回读 `audience.fcKeywordWtpids` 含该包 |
                 | 6 | 回读 → 开量：`getCampaignShopping` 逐字段比对 → `updateCampaignShopping` 置 `pause=false` | material/audience 与设计一致 |
 
                 ## 硬约束
                 - **首单只建 1 个计划 / 1 个词包 / 1 张图**，`pause=true`，回读通过再批量。
+                - **发写调用前先跑 `scripts/manifest.py verify`**：version 必须等于文件名 `.vN`，
+                  打印将发送文件的 sha256 并与审计放行记录一致才发。
+                - **重试预算硬上限 3 次**；第 1 次失败即把下一轮所需全部改动一次性交回团长，不逐个试。
                 - `material` 是整体替换：任何 `updateCampaignShopping` 之前必须读全 51 字段，
                   漏读 `fengchaoTitle` 会被清空。
                 - 每次写调用后立刻把 `{ts, runId, step, capability, call_id, state}` 追加到

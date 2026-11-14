@@ -84,8 +84,9 @@ runDir: .ecwf/runs/<runId>
 {"stages": {"01-product": {"status": "done", "by": "成员1", "file": "01-product/required-fields.json", "version": 1}}}
 ```
 
-- 状态：`pending / running / done / rejected / frozen`
+- 状态：`pending / running / done / rejected / frozen`；`finalStatus`：`running / success / success-paused / failed / abandoned`
 - `rejected` 必须带 `reason` + `retryTo`
+- **`version` 必须等于 `file` 文件名里的 `.vN`**（无 `.vN` 视为 1）：`scripts/manifest.py verify` 会检出错位
 - 断点续跑：重跑先读 manifest，`done` 跳过，只补 `pending` / `rejected`
 - `objects` 记 `imageIds / packageIds / campaignShoppingId`
 
@@ -98,6 +99,7 @@ runDir: .ecwf/runs/<runId>
 - **①–④ 可并行**：彼此无依赖，都是纯产出，各写各的目录。
 - **⑤–⑧ 必须串行**：⑤ 依赖 ①-④，⑥ 依赖 ⑤，⑦ 依赖 ⑥，⑧ 依赖 ⑦ 结论为"通过"。
 - 进入 ⑧ 后顺序也不可换：`imageId`（⑧-2）先于建计划（⑧-4）；`packageId`（⑧-3）先于绑包（⑧-5）。
+- **等待熔断**：重试预算**硬上限 3 次**，第 3 次失败转人工后台建计划；第 1 次失败就把下一轮的**全部改动一次性批量下发**（图 + payload + 审计要点），禁止逐个往返。
 
 ## 5. 读写分离：读人人有，写只有一个入口
 
@@ -155,12 +157,13 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | 脚本 | 用途 |
 |---|---|
 | `scripts/new_run.py` | 建 run 目录、`.ecwf/.gitignore`、`manifest.json` |
-| `scripts/manifest.py` | 读/改 stages 状态，查"下一步该谁" |
+| `scripts/manifest.py` | 读/改 stages 状态；`verify` 校验「version↔文件名 .vN」+ 将发送文件 sha256 对账；`final` 写 finalStatus（含 `abandoned`） |
 | `scripts/record_call.py` | 追加 `calls.jsonl` 一行 |
 | `scripts/snapshot_diff.py` | before/after 快照比对（51 字段） |
-| `scripts/assets_pack.py` | 成员4：纯 base64 / imageName≤200 / MD5 / 体积 / image-map |
+| `scripts/assets_pack.py` | 成员4：纯 base64 / imageName≤200 / MD5 / 体积 / image-map；**图片四关硬闸（精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5 一致）** |
 | `scripts/backfill_image_ids.py` | ⑧-2 后用 uploadImage 返回值回填 imageId（默认落 `.v2.json`） |
-| `scripts/validate_payloads.py` | §5.6 预检：schema 校验 + imageId 编造检测 + 业务规则 |
+| `scripts/validate_payloads.py` | §5.6 预检：schema 校验 + imageId 编造检测 + 业务规则（默认按 `.vN` 取最新 image-map；`userPortrait` 走品牌头像分支） |
+| `scripts/_enums.py` | `validate_payloads` / `snapshot_diff` 共用的字段枚举表（`excludeTrans` 含 `"0"`） |
 
 八个脚本都已实测可用；`validate_payloads.py` / `backfill_image_ids.py` 需要 `jsonschema`（`.venv`）。
 
@@ -181,9 +184,13 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 2. 接口：只用 `KeyWordShoppingService` / `ImageManageService` / `CampaignShoppingService`。
 3. 读写分离：只读端点人人可用，**写能力只在成员8 的工具列表里**（结构保证）。
 4. 词包：先成包再绑计划，绑定是**替换式**。
-5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。
+5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。`userPortrait`（120×120）必带；
+   `pictures` 尺寸走**精确宽高白名单**（370×245/1140×640/750×1000）、≤18 张；`audience` 只有 `interests` 键级必带；
+   ⑥ 出 payload 以 `templates/campaign-baseline.json` 为骨架替换取值，不从零拼。
 6. 图片：必须先 `uploadImage(addImage=true)` 拿真实 `imageId`（由成员8 执行）；连接器无生成能力。
 7. 顺序：`imageId` 先于建计划、`packageId` 先于绑包。
-8. 实施：`addCampaignShopping` 未实测，首单 1 计划 / 1 词包 / 1 图、`pause=true`。
+8. 实施：`addCampaignShopping` 未实测，首单 1 计划 / 1 词包 / 1 图、`pause=true`；**建单/复制后立刻
+   `updateCampaignShopping {campaignShoppingId, pause:true}`（最小请求体）补暂停**（建单不认 pause，回显 true 落库 false）；
+   重试预算硬上限 3 次、首败即批量下发。
 9. 不编造：`productId` / `imageId` / 落地页一律不得编造，缺就写"待核实"。
 10. 存储：产物落 `.ecwf/runs/<runId>/`，上游冻结，`call_id` 必落盘，token 不入盘。
