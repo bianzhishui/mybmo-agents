@@ -266,6 +266,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[size ok] {f.name} {wh[0]}×{wh[1]} 命中白名单")
         # ③ 逐张自查
         entry = attest.get(f.name) if isinstance(attest, dict) else None
+        if entry and not (entry.get("by") or (isinstance(attest, dict) and attest.get("_signedBy"))):
+            print(f"[WARN] {f.name} 内容自查未署名（加 \"by\": \"<人名>\" 便于审计追责）", file=sys.stderr)
         if not entry:
             problems.append(f"{f.name} 缺内容红线自查条目（--content-attest 里没有该文件名）")
         else:

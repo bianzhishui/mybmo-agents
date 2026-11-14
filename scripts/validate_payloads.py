@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -476,6 +477,88 @@ CALL_ID_RE = re.compile(r"\b[0-9a-f]{12}\b")
 EVIDENCE_RE = re.compile(r"机审通过|用户确认|已通过机审|审核通过")
 
 
+PLACEHOLDER_TEXT_RE = re.compile(r"待核实|<\s*[^<>]{1,40}\s*>|\{\{|\}\}|TODO|FIXME|TBD")
+
+
+def check_placeholders(payloads: dict[str, Any], report: Report) -> None:
+    """H3：payload 里不得残留占位文本（待核实 / <...> / {{...}} / TODO）。
+
+    schema 的 minLength 拦不住 `"productId":"待核实"`——必须单独扫。
+    """
+    BASE64ISH_RE = re.compile(r"^[A-Za-z0-9+/=\r\n]{64,}$")
+
+    def walk(node: Any, trail: str):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "content":  # uploadImage 的 base64 正文，不参与占位扫描
+                    continue
+                yield from walk(v, f"{trail}/{k}" if trail else k)
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                yield from walk(v, f"{trail}[{i}]")
+        elif isinstance(node, str):
+            if PENDING_RE.match(node) or BASE64ISH_RE.match(node):
+                return
+            yield trail, node
+
+    hits = 0
+    for name, payload in payloads.items():
+        if payload is None:
+            continue
+        for trail, text in walk(payload, ""):
+            m = PLACEHOLDER_TEXT_RE.search(text)
+            if m:
+                hits += 1
+                report.fail(f"占位文本@{name}:{trail}",
+                            f"残留占位 {m.group(0)!r}：接口不认占位，必须先替换（{text[:60]!r}…）")
+    if not hits:
+        report.ok("占位文本", "payload 无待核实/<...> 残留")
+
+
+def check_calls_integrity(run_dir: Path, report: Report) -> None:
+    """M1 + M2：calls.jsonl 的 hash 链（防事后篡改）与 account 一致性。"""
+    path = run_dir / "08-execution" / "calls.jsonl"
+    if not path.is_file():
+        return
+    manifest = {}
+    if (run_dir / "manifest.json").is_file():
+        try:
+            manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            manifest = {}
+    manifest_account = manifest.get("account")
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    broken = nochain = 0
+    account_bad: list[str] = []
+    prev_raw = ""
+    for ln, raw in enumerate(lines, 1):
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError:
+            broken += 1
+            continue
+        if "prev" in row:
+            expected = hashlib.sha256(prev_raw.encode("utf-8")).hexdigest() if prev_raw else ""
+            if str(row.get("prev")) != expected:
+                broken += 1
+        else:
+            nochain += 1
+        if manifest_account and row.get("account") and row["account"] != manifest_account:
+            account_bad.append(f"第{ln}行 account={row['account']!r}≠manifest {manifest_account!r}")
+        prev_raw = raw
+    if broken:
+        report.fail("calls.jsonl 链", f"{broken} 行 prev 不匹配（可能被事后改动）")
+    elif nochain:
+        report.warn("calls.jsonl 链", f"{nochain} 行为旧记录（无 prev 字段），无法校验完整性（新记录会带链）")
+    else:
+        report.ok("calls.jsonl 链", "hash 链完整")
+    if account_bad:
+        for m in account_bad:
+            report.fail("calls.jsonl 账户", m)
+    elif manifest_account:
+        report.ok("calls.jsonl 账户", f"与 manifest.account={manifest_account!r} 一致")
+
+
 def check_audit_evidence(run_dir: Path, report: Report) -> None:
     """建议11：审计报告里"机审通过/用户确认"这类断言必须给可复现 call_id 或原话。
 
@@ -713,6 +796,8 @@ def main(argv: list[str] | None = None) -> int:
     check_required_fields_consistency(run_dir, report)
     check_picture_dimensions(run_dir, payloads, report, args.image_map)
     check_execution_artifacts(run_dir, report)
+    check_placeholders(payloads, report)
+    check_calls_integrity(run_dir, report)
 
     if args.json:
         print(json.dumps({"runDir": str(run_dir), **report.dump()}, ensure_ascii=False, indent=2))

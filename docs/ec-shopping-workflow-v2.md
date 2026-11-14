@@ -287,13 +287,16 @@ API 参数
 │   ├── addCampaignShopping.v2.json   # 改版 .vN；_notes.json 记改因与溯源
 │   └── _notes.json                   # 下划线前缀＝辅助文件（_draft.md / _*-response.json 同）
 ├── 07-audit/                  # 成员7
-│   └── audit-report.md        #   六层清单 + 结论
+│   ├── audit-report.md        #   六层清单 + 结论
+│   └── approval.json          #   审计放行件（payload + sha256 + pass），08 只读对账
 └── 08-execution/              # 成员8
     ├── preflight.json         #   授权 + 51 字段完整性
     ├── execution-plan.json    #   六步清单（dry-run）
     ├── before-snapshot.json   #   改前 51 字段原文（回滚唯一基准）
     ├── after-snapshot.json    #   改后回读
-    └── calls.jsonl            #   每次写的 call_id 流水
+    ├── calls.jsonl            #   每次写的 call_id 流水（带 prev hash 链）
+    ├── user-confirmation.json #   开量前用户书面确认（gate_check --for unpause 校验）
+    └── delete-confirmation.json # 不可逆删除的二次确认
 ```
 
 编号 = 阶段序 = 成员序，一眼看出"卡在第几步、谁还没交"。
@@ -355,6 +358,21 @@ API 参数
 > `required`，所以"必填"的权威来源始终是服务端报错 + 本仓机检，不要把本地 schema 当成接口约束。
 
 把"人检查"变成"机器检查"，是这层规范最大的价值。
+
+### 5.8 防绕过闸门（2026-11-14 加固）
+
+此前多数闸门是"自证"（执行者自己声明/自己记录），流程内的人可绕过。现补齐为"他证 + 机检"：
+
+| 闸门 | 机制 | 脚本 |
+|---|---|---|
+| **审计放行件** | 成员7 产出 `07-audit/approval.json`（`result:pass` + `payload` + `sha256` + `evidence`）；`verify` 把现场 sha 与它对账，且 `08-execution` 未拿到放行件不得置 done | `manifest.py verify [--require-approval]` |
+| **开量/删除硬闸** | 开量前必须 G1~G6 全 closed + `08-execution/user-confirmation.json`；删除前必须 `delete-confirmation.json` | `gate_check.py --for unpause\|delete` |
+| **状态机顺序** | `set … done` 强制前置阶段 done + 文件存在；越级需 `--force` 且留痕 | `manifest.py set` |
+| **占位文本** | payload 出现"待核实 / `<...>` / `{{...}}`" 直接 FAIL（base64 正文除外） | `validate_payloads.py` |
+| **流水防篡改** | `calls.jsonl` 每行带 `prev`（上一行 sha256）与 `account`；链断裂/账户不符即 FAIL | `record_call.py` + `validate_payloads.py` |
+| **未知结果对账** | 超时/5xx 不重发，先按 capability 给出的查询路径核对后台 | `reconcile.py` |
+| **重试预算** | 每阶段重试硬上限 3 次，超限拒绝 | `manifest.py retry` |
+| **人工闸证据** | `gate … closed` 必须带 `--evidence`（用户原话/call_id） | `manifest.py gate` |
 
 ### 5.7 保留与清理
 

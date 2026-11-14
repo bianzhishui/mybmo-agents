@@ -81,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # 同 slug 未完结 run 检查：防止孤儿 run（P1-12）
     runs_root = home / "runs"
+    parallel_override = None
     if runs_root.is_dir() and not args.allow_parallel:
         open_same_slug = []
         for d in sorted(runs_root.iterdir()):
@@ -103,6 +104,41 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+    elif runs_root.is_dir() and args.allow_parallel:
+        same = []
+        for d in sorted(runs_root.iterdir()):
+            if d.is_dir() and d.name.endswith(f"-{args.slug}"):
+                mf = d / "manifest.json"
+                if mf.is_file():
+                    try:
+                        if json.loads(mf.read_text(encoding="utf-8")).get("finalStatus") == "running":
+                            same.append(d.name)
+                    except json.JSONDecodeError:
+                        pass
+        if same:
+            parallel_override = {"slug": args.slug, "conflictedWith": same,
+                                 "note": "显式 --allow-parallel：与未完结 run 并行"}
+            print(f"[WARN] --allow-parallel：与未完结 run 并行 {same}（已记入 manifest.parallelOverride）",
+                  file=sys.stderr)
+
+    # L4：同账户仍有 running run 时提醒（并行可能互相踩 bind 替换语义）
+    if runs_root.is_dir() and args.account:
+        busy = []
+        for d in sorted(runs_root.iterdir()):
+            if not d.is_dir():
+                continue
+            mf = d / "manifest.json"
+            if not mf.is_file():
+                continue
+            try:
+                m = json.loads(mf.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if m.get("finalStatus") == "running" and m.get("account") == args.account:
+                busy.append(d.name)
+        if busy:
+            print(f"[WARN] 账户 {args.account} 仍有未完结 run：{busy}（bind 是替换语义，并行易互相踩）",
+                  file=sys.stderr)
 
     manifest = load_manifest_template()
     manifest.update(
@@ -114,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
             "finalStatus": "running",
         }
     )
+    if parallel_override:
+        manifest["parallelOverride"] = parallel_override
     for stage in manifest.get("stages", {}):
         manifest["stages"][stage] = {"status": "pending"}
     manifest.setdefault("objects", {"imageIds": [], "packageIds": [], "campaignShoppingId": None})

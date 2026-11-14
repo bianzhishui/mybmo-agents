@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from datetime import datetime
@@ -26,6 +27,7 @@ from pathlib import Path
 from _runbook import resolve_run_dir
 
 REQUIRED = ("ts", "runId", "step", "capability", "call_id", "state")
+# 追加字段：account（账户一致性核对）、prev（上一行的 sha256，防事后篡改）
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -56,6 +58,12 @@ def main(argv: list[str] | None = None) -> int:
         except json.JSONDecodeError:
             run_id = None
     run_id = run_id or run_dir.name
+    account = None
+    if manifest_path.is_file():
+        try:
+            account = json.loads(manifest_path.read_text(encoding="utf-8")).get("account")
+        except json.JSONDecodeError:
+            account = None
 
     record = {
         "ts": args.ts or datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -67,12 +75,20 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.note:
         record["note"] = args.note
+    if account:
+        record["account"] = account
 
     out = run_dir / "08-execution" / "calls.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
+    prev = ""
+    if out.is_file():
+        lines = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        if lines:
+            prev = hashlib.sha256(lines[-1].encode("utf-8")).hexdigest()
+    record["prev"] = prev
+    ordered = {k: record[k] for k in REQUIRED + tuple(k for k in record if k not in REQUIRED)}
     with out.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({k: record[k] for k in REQUIRED + tuple(k for k in record if k not in REQUIRED)},
-                            ensure_ascii=False) + "\n")
+        fh.write(json.dumps(ordered, ensure_ascii=False) + "\n")
 
     print(f"{out} += {record['step']} {record['capability']} {record['call_id']} ({record['state']})")
     return 0

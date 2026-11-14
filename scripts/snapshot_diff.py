@@ -129,6 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--after")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--allow-diff", action="store_true", help="有差异也返回 0")
+    ap.add_argument("--fail-on-unexpected", action="store_true",
+                    help="即使 --allow-diff，出现非预期字段差异也返回 1（推荐 ⑧-6 用）")
     args = ap.parse_args(argv)
 
     if args.before and args.after:
@@ -169,6 +171,29 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n[WARN] {w}")
         print(f"\n差异 {len(rows)} 处，告警 {len(warns)} 条")
 
+    unexpected = []
+    if args.fail_on_unexpected:
+        volatile = {
+            "astat", "elementId", "auditId", "reAuditStatus", "groupId", "url", "hamming",
+            "imageIdStr", "smallSize", "verticalLargeSize", "verticalMiddleSize", "largeSize",
+            "portraitSize", "3To4RatioVerticalLargeSize", "aigcTitle", "aigcTitleId", "aigcId",
+            "posterSource", "elementFixStatus", "status", "pause", "fcKeywordWtpids",
+            "creativeShoppingIds", "adgroupShoppingId", "campaignSource", "useLiftBudget",
+            "liftStatus", "intelligentType", "aiOptimizer", "reportData",
+            "delAuditRefuseMaterial", "replaceRefuseBrand",
+        }
+        for r in rows:
+            leaf = r["path"].split("/")[-1].split("[")[0]
+            if leaf in volatile:
+                continue
+            unexpected.append(r["path"])
+        if unexpected:
+            print(f"\n[FAIL] {len(unexpected)} 处非预期字段差异（加 --allow-diff 也阻断）：")
+            for u in unexpected[:10]:
+                print(f"   - {u}")
+
+    if unexpected:
+        return 1
     if rows and not args.allow_diff:
         return 1
     return 0

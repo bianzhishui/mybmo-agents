@@ -10,6 +10,7 @@
     final <status>             写 finalStatus（success / success-paused / failed / abandoned），可带 --reason
                                有未闭环 pendingGates 时拒绝置 success（建议12）
     gate <id> <status>         改一个人工闸（open / closed），可带 --reason
+    retry <stage>              记一次重试；超过 3 次拒绝（除非 --force）
     verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256
     lint-files                 校验 run 目录文件名是否落在协议封闭清单内（§1.1）
 
@@ -118,7 +119,7 @@ def recorded_shas(run_dir: Path) -> dict[str, str]:
     return out
 
 
-def verify(run_dir: Path, manifest: dict, record: bool) -> int:
+def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool = False) -> int:
     """版本 ↔ 文件名强绑定 + 将发送文件 sha256 对账。返回 0 通过 / 1 有 FAIL。"""
     fails: list[str] = []
     warns: list[str] = []
@@ -166,6 +167,39 @@ def verify(run_dir: Path, manifest: dict, record: bool) -> int:
                 f"{stage}: {path.name} sha256={digest} ≠ execution-plan 放行记录 {rec}"
             )
             print(f"[FAIL] {stage:12} sha256 不一致：现场 {digest[:16]}… ≠ 放行 {rec[:16]}…")
+
+        # H1：审计放行件（07 写、08 只读），把"自证"变成"他证"
+        if stage == "06-payloads":
+            approval_path = run_dir / "07-audit" / "approval.json"
+            if not approval_path.is_file():
+                msg = "缺 07-audit/approval.json（审计放行件）"
+                if require_approval:
+                    fails.append(f"{stage}: {msg}")
+                    print(f"[FAIL] {stage:12} {msg}")
+                else:
+                    warns.append(f"{stage}: {msg}（加 --require-approval 可判 FAIL）")
+                    print(f"[warn] {stage:12} {msg}")
+            else:
+                try:
+                    ap = json.loads(approval_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    fails.append(f"{stage}: approval.json 不是合法 JSON")
+                    print(f"[FAIL] {stage:12} approval.json 解析失败")
+                    ap = {}
+                if ap:
+                    ap_sha = str(ap.get("sha256") or "")
+                    ap_file = Path(str(ap.get("payload") or "")).name
+                    if ap.get("result") != "pass":
+                        fails.append(f"{stage}: approval.result={ap.get('result')!r}（非 pass）")
+                        print(f"[FAIL] {stage:12} 审计结论非 pass：{ap.get('result')!r}")
+                    if ap_file and ap_file != path.name:
+                        fails.append(f"{stage}: approval.payload={ap_file} ≠ 当前执行版 {path.name}")
+                        print(f"[FAIL] {stage:12} 放行件指向 {ap_file}，当前是 {path.name}（拿旧放行件发新 payload）")
+                    if ap_sha and ap_sha != digest:
+                        fails.append(f"{stage}: sha256≠审计放行 {ap_sha}")
+                        print(f"[FAIL] {stage:12} sha256 与审计放行不符：现场 {digest[:16]}… ≠ {ap_sha[:16]}…")
+                    elif ap_sha == digest:
+                        print(f"[ok]   {stage:12} 与 07-audit/approval.json 一致（审计放行 sha）")
     open_gates = [
         gid for gid, g in (manifest.get("pendingGates") or {}).items()
         if (g or {}).get("status", "open") != "closed"
@@ -186,13 +220,15 @@ ALLOWED_FILES: dict[str, list[str]] = {
     "04-assets": [r"img-.+\.(?:png|jpe?g|webp|gif|bmp)", r"img-.+\.b64", r"image-map\.json"],
     "05-plan": [r"plan-draft\.json"],
     "06-payloads": [r"addKeywordPackages\.json", r"uploadImage\.json", r"addCampaignShopping\.json"],
-    "07-audit": [r"audit-report\.md"],
+    "07-audit": [r"audit-report\.md", r"approval\.json"],
     "08-execution": [
         r"preflight\.json",
         r"execution-plan\.json",
         r"before-snapshot\.json",
         r"after-snapshot\.json",
         r"calls\.jsonl",
+        r"user-confirmation\.json",
+        r"delete-confirmation\.json",
     ],
 }
 VERSION_SUFFIX_RE = re.compile(r"\.v\d+(?=\.[^.]+$)")
@@ -219,6 +255,10 @@ def lint_files(run_dir: Path) -> int:
             name = f.name
             if name.startswith("_"):
                 continue  # 辅助文件
+            m = re.search(r"\.v(\d+)(?=\.[^.]+$)", name)
+            if m and int(m.group(1)) > 99:
+                problems.append(f"{stage}/{name}: 版本号 {m.group(1)} 过大（上限 99，防止用高版本号制造'唯一执行版'混淆）")
+                continue
             base = VERSION_SUFFIX_RE.sub("", name)  # 去掉 .vN
             if any(c.match(name) or c.match(base) for c in compiled):
                 continue
@@ -252,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     p_set.add_argument("--reason")
     p_set.add_argument("--retry-to", choices=STAGES)
     p_set.add_argument("--bump-version", action="store_true", help="冻结后改写时递增 version")
+    p_set.add_argument("--force", action="store_true", help="跳过前置阶段/文件存在检查（会记录原因）")
 
     p_obj = sub.add_parser("object", help="写 objects 键")
     p_obj.add_argument("key")
@@ -265,11 +306,18 @@ def main(argv: list[str] | None = None) -> int:
     p_gate.add_argument("gate_id")
     p_gate.add_argument("status", choices=["open", "closed"])
     p_gate.add_argument("--reason")
+    p_gate.add_argument("--evidence", help="关闭人工闸的证据（用户原话/call_id）；closed 时必填")
+    p_gate.add_argument("--force", action="store_true")
 
     sub.add_parser("lint-files", help="文件名封闭清单校验（skill §1.1）")
 
+    p_retry = sub.add_parser("retry", help="记一次重试（硬上限 3）")
+    p_retry.add_argument("stage", choices=STAGES)
+    p_retry.add_argument("--force", action="store_true")
+
     p_verify = sub.add_parser("verify", help="版本↔文件名绑定 + 将发送文件 sha256 对账")
     p_verify.add_argument("--record", action="store_true", help="把 06-payloads 执行版 sha256 写回 manifest")
+    p_verify.add_argument("--require-approval", action="store_true", help="缺 07-audit/approval.json 即 FAIL（推荐 ⑧ 前用）")
 
     args = ap.parse_args(argv)
     run_dir = resolve_run(args.run, args.run_dir)
@@ -306,17 +354,33 @@ def main(argv: list[str] | None = None) -> int:
         return lint_files(run_dir)
 
     if args.cmd == "verify":
-        rc = verify(run_dir, manifest, args.record)
+        rc = verify(run_dir, manifest, args.record, args.require_approval)
         if args.record:
             save(run_dir, manifest)
         return rc
 
+    if args.cmd == "retry":
+        entry = manifest.setdefault("stages", {}).setdefault(args.stage, {"status": "pending"})
+        n = int(entry.get("retries", 0)) + 1
+        if n > 3 and not args.force:
+            print(f"拒绝：{args.stage} 已重试 {n - 1} 次，达硬上限 3 次（转人工后台建计划；--force 才可继续）", file=sys.stderr)
+            return 1
+        entry["retries"] = n
+        save(run_dir, manifest)
+        print(f"{args.stage} retries -> {n}")
+        return 0
+
     if args.cmd == "gate":
+        if args.status == "closed" and not (args.evidence or args.force):
+            print("关闭人工闸必须给 --evidence（用户原话/call_id），否则审计无法复核（--force 可跳过）", file=sys.stderr)
+            return 1
         gates = manifest.setdefault("pendingGates", {})
         entry = gates.setdefault(args.gate_id, {"desc": "", "status": "open"})
         entry["status"] = args.status
         if args.reason:
             entry["reason"] = args.reason
+        if args.evidence:
+            entry["evidence"] = args.evidence
         save(run_dir, manifest)
         print(f"gate {args.gate_id} -> {args.status}")
         return 0
@@ -346,6 +410,24 @@ def main(argv: list[str] | None = None) -> int:
         print("status=rejected 必须同时给 --reason 与 --retry-to", file=sys.stderr)
         return 1
 
+    # H4：推进到 done 前，前置阶段必须 done、文件必须存在；08 还需 07 done + 审计放行件
+    if args.status == "done" and not args.force:
+        idx = STAGES.index(args.stage)
+        missing = [s for s in STAGES[:idx] if manifest.get("stages", {}).get(s, {}).get("status") != "done"]
+        if missing:
+            print(f"拒绝置 done：前置阶段未完成 {missing}（确需越级加 --force）", file=sys.stderr)
+            return 1
+        if args.file and not (run_dir / args.file).is_file():
+            print(f"拒绝置 done：文件不存在 {args.file}", file=sys.stderr)
+            return 1
+        if args.stage == "08-execution":
+            if manifest.get("stages", {}).get("07-audit", {}).get("status") != "done":
+                print("拒绝置 08-execution done：07-audit 未 done", file=sys.stderr)
+                return 1
+            if not (run_dir / "07-audit" / "approval.json").is_file():
+                print("拒绝置 08-execution done：缺 07-audit/approval.json（审计放行件）", file=sys.stderr)
+                return 1
+
     stage_entry = manifest.setdefault("stages", {}).setdefault(args.stage, {"status": "pending"})
     was_done = stage_entry.get("status") == "done"
     stage_entry["status"] = args.status
@@ -360,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         stage_entry.pop("reason", None)
         stage_entry.pop("retryTo", None)
+    if args.force:
+        stage_entry["forceNote"] = "越级/跳过前置检查（--force）"
     if args.bump_version or was_done:
         stage_entry["version"] = int(stage_entry.get("version", 1)) + (1 if (args.bump_version or was_done) else 0)
 

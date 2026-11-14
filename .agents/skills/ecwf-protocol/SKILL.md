@@ -43,8 +43,8 @@ whenToUse: 当一个任务是电商推广计划搭建链路的一环——商品
 | `04-assets/` | `img-*.png`、`img-*.b64`、`image-map.json` |
 | `05-plan/` | `plan-draft.json` |
 | `06-payloads/` | `addKeywordPackages.json`、`uploadImage.json`、`addCampaignShopping.json` |
-| `07-audit/` | `audit-report.md` |
-| `08-execution/` | `preflight.json`、`execution-plan.json`、`before-snapshot.json`、`after-snapshot.json`、`calls.jsonl` |
+| `07-audit/` | `audit-report.md`、`approval.json`（审计放行件） |
+| `08-execution/` | `preflight.json`、`execution-plan.json`、`before-snapshot.json`、`after-snapshot.json`、`calls.jsonl`、`user-confirmation.json`（开量确认）、`delete-confirmation.json`（删除确认） |
 
 要改一版就落 `xxx.v2.json`（同名 + `.v2`），要写辅助说明就落 `_notes.json` / `_draft.md`。**除这两类，不要新增文件名。**
 
@@ -153,6 +153,8 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 ## 6. 审计与打回
 
 - 审计结论只有两种：`通过` / `打回给成员X，具体问题：…`
+- 结论为"通过"时**必须**落 `07-audit/approval.json`（payload + sha256 + result:pass + evidence），
+  08 侧 `manifest.py verify --require-approval` 会对账；没有放行件不得置 `08-execution done`。
 - **取证纪律**：凡"机审通过""用户确认"这类断言，必须给可复现的 `call_id` / 用户原话；
   `getImageList` 取证**不要传 `fields`**（传了会过滤掉 `auditStatus`/`reason`）。
 - 打回由团长用 `send_message` 发回同一个子 agent（本地子 agent 可续），要求出 `v2` 文件。
@@ -167,6 +169,8 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 | `scripts/record_call.py` | 追加 `calls.jsonl` 一行 |
 | `scripts/make_baseline.py` | 从 `getCampaignShopping` 读回文件生成账户参数骨架（不调接口） |
 | `scripts/scaffold_plan.py` | 从 baseline + ①②③④ 生成 ⑤⑥ 初稿（plan-draft / 三份 payload） |
+| `scripts/gate_check.py` | 开量/删除前硬闸：G1~G6 闭环 + 审计放行件 + 用户/删除确认 |
+| `scripts/reconcile.py` | 结果未知/失败调用的后台对账清单（只读） |
 | `scripts/rollback_plan.py` | 从 `calls.jsonl` 逆序生成回滚清单 |
 | `scripts/cost_report.py` | 按用量 JSON + 峰谷价算 token 费用 |
 | `scripts/archive_runs.py` | 按 §5.7 归档超期 run（保留 manifest + 08-execution） |

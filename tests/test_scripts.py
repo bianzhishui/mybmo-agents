@@ -183,7 +183,8 @@ class TestManifest(RunCase):
                             gates={"G4": {"status": "open"}})
         r1 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
         self.assertEqual(r1.returncode, 1)
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "gate", "G4", "closed")
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "gate", "G4", "closed",
+                 "--evidence", "用户原话：同意开量")
         self.assertEqual(r2.returncode, 0)
         r3 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
         self.assertEqual(r3.returncode, 0, r3.stderr)
@@ -237,6 +238,71 @@ class TestTools(RunCase):
         self.assertEqual(c["material"]["userPortrait"], {"imageId": 9})
         self.assertEqual(c["material"]["pictures"], [{"imageId": 5}])
         self.assertNotIn("astat", json.dumps(c))
+
+
+class TestGatesAndGuards(RunCase):
+    def test_set_requires_prereq(self):
+        self.write_manifest({})
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "set", "06-payloads", "done",
+                "--file", "06-payloads/addCampaignShopping.json")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("前置阶段未完成", r.stderr)
+
+    def test_set_force_allows(self):
+        self.write_manifest({})
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "set", "06-payloads", "done",
+                "--file", "06-payloads/addCampaignShopping.json", "--force")
+        self.assertEqual(r.returncode, 0)
+
+    def test_verify_requires_approval(self):
+        self.write_manifest({"06-payloads": {"status": "done", "file": "06-payloads/addCampaignShopping.json",
+                                             "version": 1}})
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--require-approval")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("approval.json", r.stdout)
+
+    def test_placeholder_text_fails(self):
+        p = self.load("06-payloads/addCampaignShopping.json")
+        p["campaignShoppingTypes"][0]["productName"] = "待核实"
+        self.save("06-payloads/addCampaignShopping.json", p)
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("残留占位", r.stdout)
+
+    def test_gate_check_unpause(self):
+        self.write_manifest({"08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
+                            gates={"G4": {"status": "open"}})
+        r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "unpause")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("未闭环", r.stdout)
+
+    def test_retry_cap(self):
+        self.write_manifest({})
+        for i in range(3):
+            r = run("manifest.py", "--run-dir", str(self.run_dir), "retry", "08-execution")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "retry", "08-execution")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("硬上限 3 次", r.stderr)
+
+    def test_lint_version_cap(self):
+        (self.run_dir / "05-plan" / "plan-draft.v100.json").write_text("{}", encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "lint-files")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("版本号", r.stdout)
+
+    def test_calls_chain_mismatch(self):
+        calls = self.run_dir / "08-execution" / "calls.jsonl"
+        rows = [
+            json.dumps({"ts": "t1", "step": "8-2", "capability": "uploadImage",
+                        "call_id": "a"*12, "state": "ok", "prev": ""}, ensure_ascii=False),
+            json.dumps({"ts": "t2", "step": "8-3", "capability": "addKeywordPackages",
+                        "call_id": "b"*12, "state": "ok", "prev": "deadbeef"}, ensure_ascii=False),
+        ]
+        calls.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        r = run("validate_payloads.py", "--run-dir", str(self.run_dir))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("prev 不匹配", r.stdout)
 
 
 class TestSnapshotEnums(unittest.TestCase):
