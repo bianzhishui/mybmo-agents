@@ -3,7 +3,7 @@
 
 把"别忘了看 G1~G6"变成一条命令：
 
-    python3 scripts/gate_check.py --run-dir <run> --for execute   # ⑧ 启动前：01~07 done + 放行件 pass + 已锚定
+    python3 scripts/gate_check.py --run-dir <run> --for execute   # ⑧ 启动前：01~07 done + 放行件 pass
     python3 scripts/gate_check.py --run-dir <run> --for unpause   # 开量前：所有人工闸 closed + 用户书面确认
     python3 scripts/gate_check.py --run-dir <run> --for delete --ids 123  # 删除前：二次确认件
 

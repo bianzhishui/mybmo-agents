@@ -663,7 +663,7 @@
                 以及账户类 `bind_account` / `share_account` / `revoke_share`。
                 只读能力（人人可用，你也可用来预检）：`list_accounts` / `auth_status` /
                 `getCampaignShopping` / `getImageList` / `getKeywordPackages` / `query_audit`。
-                你落下的每个 `call_id` 就是审计链的锚点。
+                你落下的每个 `call_id` 就是审计链的唯一线索。
 
                 ## 启动与开量前的硬闸（命令化，不要靠记忆）
                 - 进入 ⑧ 前：`python3 scripts/gate_check.py --for execute` 必须 READY
