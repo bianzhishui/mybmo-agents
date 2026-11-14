@@ -5,7 +5,6 @@
 #   bash scripts/preflight.sh --run-dir .ecwf/runs/xxx
 #   bash scripts/preflight.sh --run <runId> --skip-snapshot
 #   （默认包含 gate_check --for execute；--skip-gates 可跳过）
-#   --strict-anchor   锚定缺失/日志链断裂即 FAIL（推荐 ⑧ 用）
 #   --strict-snapshot 非预期字段差异即 FAIL（推荐 ⑧-6 用）
 #
 # 依次执行：
@@ -13,7 +12,7 @@
 #   2) manifest.py verify    —— version==文件名 .vN、将发送文件 sha256 与放行记录对账、未闭环人工闸
 #   3) manifest.py lint-files—— 文件名封闭清单（§1.1）
 #   4) snapshot_diff.py      —— 有 before/after 时才跑（只读比对，差异不阻断；缺文件则跳过）
-#   5) gate_check.py --for execute —— 01~07 done + 审计放行件 pass + 已锚定（默认；--skip-gates 跳过）
+#   5) gate_check.py --for execute —— 01~07 done + 审计放行件 pass（默认；--skip-gates 跳过）
 #
 # 退出码：0 全过 / 1 有 FAIL / 2 用法错。
 set -u
@@ -25,7 +24,6 @@ PY="$ROOT/.venv/bin/python"
 RUN_ARGS=()
 SKIP_SNAPSHOT=0
 WITH_GATES=1  # 默认跑 gate_check --for execute
-STRICT_ANCHOR=0
 STRICT_SNAPSHOT=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,7 +33,6 @@ while [ $# -gt 0 ]; do
     --skip-snapshot) SKIP_SNAPSHOT=1; shift ;;
     --with-gates) WITH_GATES=1; shift ;;
     --skip-gates) WITH_GATES=-1; shift ;;
-    --strict-anchor) STRICT_ANCHOR=1; shift ;;
     --strict-snapshot) STRICT_SNAPSHOT=1; shift ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "未知参数：$1" >&2; exit 2 ;;
@@ -51,11 +48,7 @@ run_step() {
 }
 
 run_step "1/5 validate_payloads" "$PY" "$ROOT/scripts/validate_payloads.py" "${RUN_ARGS[@]}"
-if [ "$STRICT_ANCHOR" -eq 1 ]; then
-  run_step "2/5 manifest verify（strict-anchor）" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify --strict-anchor
-else
-  run_step "2/5 manifest verify" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify
-fi
+run_step "2/5 manifest verify" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify
 run_step "3/5 manifest lint-files" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" lint-files
 
 if [ "$WITH_GATES" -eq 1 ]; then

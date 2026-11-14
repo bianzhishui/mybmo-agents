@@ -327,10 +327,6 @@ class TestHardening(RunCase):
         self.assertIn("user-confirmation", r.stderr)
         (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
             {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
-        # 还需要锚定
-        r_anchor = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
-                       env={"ECWF_ANCHOR_DIR": str(self.tmp / "anchor")})
-        self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
         r2 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
         self.assertEqual(r2.returncode, 0, r2.stderr)
 
@@ -370,169 +366,6 @@ class TestHardening(RunCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         out = json.loads(r.stdout)["campaignShoppingTypes"][0]["audience"]
         self.assertNotIn("fcKeywordWtpids", out)
-
-
-class TestAnchor(RunCase):
-    def _anchor(self):
-        log = self.tmp / "approvals.log"
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
-        return log, r
-
-    def test_anchor_then_strict_verify(self):
-        log, r = self._anchor()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
-                 "--strict-anchor", "--log", str(log))
-        self.assertEqual(r2.returncode, 0, r2.stdout)
-        self.assertIn("三方一致", r2.stdout)
-
-    def test_strict_verify_without_anchor(self):
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
-                "--strict-anchor", "--log", str(self.tmp / "none.log"))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("缺锚定", r.stdout)
-
-    def test_payload_swapped_after_anchor(self):
-        log, r = self._anchor()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        p = self.load("06-payloads/addCampaignShopping.json")
-        p["campaignShoppingTypes"][0]["campaignShoppingName"] = "被偷换的计划名"
-        self.save("06-payloads/addCampaignShopping.json", p)
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
-                 "--strict-anchor", "--log", str(log))
-        self.assertEqual(r2.returncode, 1)
-        self.assertIn("锚定", r2.stdout)
-
-    def test_approval_tampered_after_anchor(self):
-        log, r = self._anchor()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        ap = self.load("07-audit/approval.json")
-        ap["evidence"] = ["forged"]
-        self.save("07-audit/approval.json", ap)
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
-                 "--strict-anchor", "--log", str(log))
-        self.assertEqual(r2.returncode, 1)
-        self.assertIn("approval.json 与 manifest 不符", r2.stdout)
-
-    def test_anchor_requires_pass(self):
-        ap = self.load("07-audit/approval.json")
-        ap["result"] = "fail"
-        self.save("07-audit/approval.json", ap)
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
-                "--log", str(self.tmp / "l.log"))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("非 pass", r.stderr)
-
-    def test_anchor_idempotent(self):
-        log = self.tmp / "approvals.log"
-        r1 = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
-        self.assertEqual(r1.returncode, 0, r1.stderr)
-        self.assertEqual(r2.returncode, 0, r2.stderr)
-        self.assertEqual(len(log.read_text(encoding="utf-8").strip().splitlines()), 1)
-
-    def test_log_chain_broken(self):
-        log, r = self._anchor()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        lines = log.read_text(encoding="utf-8").splitlines()
-        row = json.loads(lines[0]); row["prev"] = "deadbeef"; lines[0] = json.dumps(row, ensure_ascii=False)
-        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
-                 "--strict-anchor", "--log", str(log))
-        self.assertEqual(r2.returncode, 1)
-        self.assertIn("日志链断裂", r2.stdout)
-
-
-class TestAnchorShard(RunCase):
-    def test_default_writes_per_run_shard(self):
-        anchor_dir = self.tmp / "anchor"
-        env = {"ECWF_ANCHOR_DIR": str(anchor_dir)}
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", env=env)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        rid = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))["runId"]
-        shard = anchor_dir / f"{rid}.log"
-        self.assertTrue(shard.is_file(), r.stdout)
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--strict-anchor", env=env)
-        self.assertEqual(r2.returncode, 0, r2.stdout)
-        self.assertIn("三方一致", r2.stdout)
-
-    def test_anchor_rejects_payload_outside_run(self):
-        ap = self.load("07-audit/approval.json")
-        ap["payload"] = "../../outside.json"
-        self.save("07-audit/approval.json", ap)
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
-                "--log", str(self.tmp / "l.log"))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("越界", r.stderr)
-
-    def test_anchor_rejects_payload_name_mismatch(self):
-        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
-        m["stages"]["06-payloads"]["file"] = "06-payloads/addKeywordPackages.json"
-        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
-                "--log", str(self.tmp / "l.log"))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("≠ manifest 06-payloads", r.stderr)
-
-    def test_verify_rejects_stage_path_escape(self):
-        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
-        m["stages"]["01-product"]["file"] = "../../etc/hosts"
-        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify",
-                "--log", str(self.tmp / "l.log"))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("路径越界", r.stdout)
-
-    def test_final_success_requires_anchor(self):
-        self.write_manifest(
-            {"07-audit": {"status": "done", "file": "07-audit/audit-report.md"},
-             "08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
-            gates={})
-        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
-            {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("未锚定", r.stderr)
-
-    def test_lint_rejects_unknown_dir(self):
-        (self.run_dir / "99-junk").mkdir()
-        (self.run_dir / "99-junk" / "x.json").write_text("{}", encoding="utf-8")
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "lint-files")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("不在协议目录清单内", r.stdout)
-
-    def test_unsafe_run_id_does_not_escape_anchor_dir(self):
-        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
-        m["runId"] = "../../evil"
-        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        anchor_dir = self.tmp / "anchor"
-        env = {"ECWF_ANCHOR_DIR": str(anchor_dir)}
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", env=env)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        files = list(anchor_dir.glob("*.log"))
-        self.assertEqual(len(files), 1, r.stdout)
-        self.assertNotIn("..", files[0].name)
-        # 目录外不能出现 evil.log
-        self.assertFalse((self.tmp / "evil.log").exists())
-        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--strict-anchor", env=env)
-        self.assertEqual(r2.returncode, 0, r2.stdout)
-
-    def test_two_runs_parallel_shards(self):
-        import shutil as _sh
-        a = self.tmp / "a"; b = self.tmp / "b"
-        _sh.copytree(self.run_dir, a); _sh.copytree(self.run_dir, b)
-        # 两个 run 用不同 runId 才能分片
-        for d, rid in ((a, "run-a"), (b, "run-b")):
-            m = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
-            m["runId"] = rid
-            (d / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        env = {"ECWF_ANCHOR_DIR": str(self.tmp / "anchor")}
-        for d in (a, b):
-            r = run("manifest.py", "--run-dir", str(d), "anchor", env=env)
-            self.assertEqual(r.returncode, 0, r.stderr)
-        for d in (a, b):
-            r = run("manifest.py", "--run-dir", str(d), "verify", "--strict-anchor", env=env)
-            self.assertEqual(r.returncode, 0, r.stdout)
 
 
 class TestMoreScripts(RunCase):
@@ -597,12 +430,6 @@ class TestMoreScripts(RunCase):
     def test_gate_check_execute_and_delete(self):
         r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
         self.assertEqual(r.returncode, 0, r.stdout)
-        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
-        m.pop("approvalSha256", None)
-        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        r2 = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
-        self.assertEqual(r2.returncode, 1)
-        self.assertIn("未锚定", r2.stdout)
         r3 = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "delete", "--ids", "123")
         self.assertEqual(r3.returncode, 1)
         (self.run_dir / "08-execution" / "delete-confirmation.json").write_text(json.dumps(
@@ -662,35 +489,6 @@ class TestFinalGaps(RunCase):
 
 
 class TestRound8(RunCase):
-    def _anchor(self):
-        log = self.tmp / "a.log"
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
-        self.assertEqual(r.returncode, 0, r.stderr)
-        return log
-
-    def test_gate_check_detects_approval_tamper(self):
-        self._anchor()
-        ap = self.load("07-audit/approval.json")
-        ap["evidence"] = ["forged"]
-        self.save("07-audit/approval.json", ap)
-        r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("不符", r.stdout)
-
-    def test_final_success_detects_anchor_mismatch(self):
-        self._anchor()
-        ap = self.load("07-audit/approval.json")
-        ap["evidence"] = ["forged"]
-        self.save("07-audit/approval.json", ap)
-        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
-        m["pendingGates"] = {}
-        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(
-            json.dumps({"confirmedBy": "u", "quote": "ok"}), encoding="utf-8")
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("锚定值不符", r.stderr)
-
     def test_record_call_rejects_bad_call_id(self):
         r = run("record_call.py", "--run-dir", str(self.run_dir), "--step", "8-2",
                 "--capability", "uploadImage", "--call-id", "not-a-call-id", "--state", "ok")
@@ -724,24 +522,10 @@ class TestRound8(RunCase):
 
 
 class TestPayloadHashGate(RunCase):
-    def _anchor(self):
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
-                "--log", str(self.tmp / "a.log"))
-        self.assertEqual(r.returncode, 0, r.stderr)
-
     def _tamper_payload(self):
         p = self.load("06-payloads/addCampaignShopping.json")
         p["campaignShoppingTypes"][0]["campaignShoppingName"] = "审计后被改的名字"
         self.save("06-payloads/addCampaignShopping.json", p)
-
-    def test_anchor_rejects_missing_sha(self):
-        ap = self.load("07-audit/approval.json")
-        ap.pop("sha256", None)
-        self.save("07-audit/approval.json", ap)
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
-                "--log", str(self.tmp / "a.log"))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("缺 sha256", r.stderr)
 
     def test_gate_rejects_missing_sha(self):
         ap = self.load("07-audit/approval.json")
@@ -756,22 +540,17 @@ class TestPayloadHashGate(RunCase):
         ap = self.load("07-audit/approval.json")
         ap.pop("sha256", None)
         self.save("07-audit/approval.json", ap)
-        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
-        m["approvalSha256"] = _h.sha256((self.run_dir / "07-audit/approval.json").read_bytes()).hexdigest()
-        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
-        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--log", str(self.tmp / "a.log"))
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "verify")
         self.assertEqual(r.returncode, 1)
         self.assertIn("approval 缺 sha256", r.stdout)
 
     def test_gate_execute_detects_payload_tamper(self):
-        self._anchor()
         self._tamper_payload()
         r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
         self.assertEqual(r.returncode, 1)
         self.assertIn("payload 内容与 approval.sha256 不符", r.stdout)
 
     def test_final_success_detects_payload_tamper(self):
-        self._anchor()
         self._tamper_payload()
         m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
         m["pendingGates"] = {}

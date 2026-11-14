@@ -1,9 +1,6 @@
 # 执行产物（每个 run 一个目录，不入库）
 .ecwf/
 
-# 审计锚点：只存本机，不入库（避免"git 历史=外部参照"的假设）
-audit/approvals/
-audit/approvals.log
 
 # Python
 __pycache__/

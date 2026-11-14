@@ -9,13 +9,11 @@
     object <key> <value>       写 objects 下的键（campaignShoppingId 等）
     final <status>             写 finalStatus（success / success-paused / failed / abandoned），可带 --reason
                                置 success 需同时满足：pendingGates 全 closed + 07-audit/approval.json
-                               + 08-execution/user-confirmation.json + 已锚定(manifest.approvalSha256 且与 approval 相符)；
+                               + 08-execution/user-confirmation.json + approval.payload 内容哈希匹配；
                                --force 跳过以上检查
     gate <id> <status>         改一个人工闸（open / closed）；置 closed 必须带 --evidence（用户原话/call_id），--force 可跳过
     retry <stage>              记一次重试；超过 3 次拒绝（除非 --force）
-    anchor [--approval P] [--log P]   审计锚定：写 manifest.approvalSha256 + 追加 audit/approvals/<runId>.log（prev 链）
     verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256
-                               （--strict-anchor 时额外校验三方锚定与日志链）
     lint-files                 校验 run 目录文件名是否落在协议封闭清单内（§1.1）
 
 状态枚举：pending / running / done / rejected / frozen
@@ -32,12 +30,9 @@ finalStatus 枚举：running / success / success-paused / failed / abandoned
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import os
 import re
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from _runbook import (
@@ -49,11 +44,6 @@ from _runbook import (
     strip_version,
     within,
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# 旧版全局日志（迁移期只读兼容）；新版按 run 分片写 <ANCHOR_DIR>/<runId>.log
-DEFAULT_ANCHOR_LOG = PROJECT_ROOT / "audit" / "approvals.log"
-ANCHOR_DIR = Path(os.environ.get("ECWF_ANCHOR_DIR") or (PROJECT_ROOT / "audit" / "approvals"))
 
 OWNER = {
     "01-product": "成员1",
@@ -113,8 +103,7 @@ def recorded_shas(run_dir: Path) -> dict[str, str]:
     return out
 
 
-def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool = False,
-           strict_anchor: bool = False, log_path: Path | None = None) -> int:
+def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool = False) -> int:
     """版本 ↔ 文件名强绑定 + 将发送文件 sha256 对账。返回 0 通过 / 1 有 FAIL。"""
     fails: list[str] = []
     warns: list[str] = []
@@ -202,10 +191,6 @@ def verify(run_dir: Path, manifest: dict, record: bool, require_approval: bool =
                         print(f"[FAIL] {stage:12} sha256 与审计放行不符：现场 {digest[:16]}… ≠ {ap_sha[:16]}…")
                     elif ap_sha == digest:
                         print(f"[ok]   {stage:12} 与 07-audit/approval.json 一致（审计放行 sha）")
-    resolved_log, fell_back = resolve_verify_log(run_dir, manifest, str(log_path) if log_path else None)
-    if fell_back:
-        warns.append("锚定：未找到 run 分片日志，回退旧全局 audit/approvals.log")
-    verify_anchor(run_dir, manifest, resolved_log, strict_anchor, fails, warns)
     open_gates = [
         gid for gid, g in (manifest.get("pendingGates") or {}).items()
         if (g or {}).get("status", "open") != "closed"
@@ -286,195 +271,6 @@ def lint_files(run_dir: Path) -> int:
     return 1 if problems else 0
 
 
-SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
-
-
-def safe_run_id(run_dir: Path, manifest: dict) -> str:
-    rid = str(manifest.get("runId") or run_dir.name)
-    if SAFE_RUN_ID_RE.match(rid) and ".." not in rid:
-        return rid
-    # 防路径穿越：非法 runId 一律回退到目录名（同样清洗）
-    fallback = re.sub(r"[^A-Za-z0-9._-]", "_", run_dir.name).lstrip(".") or "run"
-    return fallback
-
-
-def anchor_log_path(run_dir: Path, manifest: dict, override: str | None) -> Path:
-    if override:
-        return Path(override)
-    return ANCHOR_DIR / f"{safe_run_id(run_dir, manifest)}.log"
-
-
-def resolve_verify_log(run_dir: Path, manifest: dict, override: str | None) -> tuple[Path, bool]:
-    """返回 (路径, 是否为旧全局日志回退)。优先 run 分片，分片不存在再回退全局。"""
-    if override:
-        return Path(override), False
-    shard = anchor_log_path(run_dir, manifest, None)
-    if shard.is_file() and shard.read_text(encoding="utf-8").strip():
-        return shard, False
-    return DEFAULT_ANCHOR_LOG, True
-
-
-def _read_log(path: Path) -> list[dict]:
-    if not path.is_file():
-        return []
-    rows = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            rows.append({"__invalid__": line})
-    return rows
-
-
-def _log_chain_broken(path: Path) -> tuple[int, int]:
-    """返回 (断链行数, 总行数)。"""
-    rows = _read_log(path)
-    broken = 0
-    prev_raw = ""
-    for raw_row in path.read_text(encoding="utf-8").splitlines() if path.is_file() else []:
-        if not raw_row.strip():
-            continue
-        try:
-            row = json.loads(raw_row)
-        except json.JSONDecodeError:
-            broken += 1
-            prev_raw = raw_row
-            continue
-        expected = hashlib.sha256(prev_raw.encode("utf-8")).hexdigest() if prev_raw else ""
-        if str(row.get("prev")) != expected:
-            broken += 1
-        prev_raw = raw_row
-    return broken, len(rows)
-
-
-def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path | None) -> int:
-    if manifest.get("stages", {}).get("07-audit", {}).get("status") != "done":
-        print("拒绝锚定：07-audit 尚未 done", file=sys.stderr)
-        return 1
-    approval_path = within(run_dir, approval_rel)
-    if approval_path is None:
-        print(f"拒绝锚定：approval 路径越界 {approval_rel!r}", file=sys.stderr)
-        return 1
-    if not approval_path.is_file():
-        print(f"缺审计放行件：{approval_path}", file=sys.stderr)
-        return 1
-    try:
-        approval = json.loads(approval_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        print("approval.json 不是合法 JSON", file=sys.stderr)
-        return 1
-    probs, payload_path, payload_sha = check_approval_payload(approval, run_dir)
-    if probs:
-        for pb in probs:
-            print(f"拒绝锚定：{pb}", file=sys.stderr)
-        return 1
-    payload_rel = str(approval.get("payload") or "")
-    stage06 = manifest.get("stages", {}).get("06-payloads", {}).get("file")
-    if stage06 and Path(stage06).name != payload_path.name:
-        print(f"拒绝锚定：approval.payload={payload_path.name} ≠ manifest 06-payloads={Path(stage06).name}", file=sys.stderr)
-        return 1
-    approval_sha = sha256_of(approval_path)
-    log_path = log_path or anchor_log_path(run_dir, manifest, None)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    # 幂等：若该 run 最后一次记录已是同一组 digest，就不重复追加
-    existing = [r for r in _read_log(log_path)
-                if r.get("runId") == safe_run_id(run_dir, manifest)]
-    if existing:
-        last = existing[-1]
-        if last.get("approvalSha256") == approval_sha and last.get("payloadSha256") == payload_sha:
-            manifest["approvalSha256"] = approval_sha
-            save(run_dir, manifest)
-            print(f"已锚定过（digest 未变），跳过追加：approvalSha256={approval_sha[:16]}…")
-            return 0
-    prev_raw = ""
-    if log_path.is_file():
-        lines = [ln for ln in log_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        if lines:
-            prev_raw = lines[-1]
-    row = {
-        "ts": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "runId": safe_run_id(run_dir, manifest),
-        "payload": payload_rel,
-        "payloadSha256": payload_sha,
-        "approvalSha256": approval_sha,
-        "prev": hashlib.sha256(prev_raw.encode("utf-8")).hexdigest() if prev_raw else "",
-    }
-    with log_path.open("a", encoding="utf-8") as fh:
-        try:  # 同机并发保护（跨机无效，靠"按 run 分片"本身避免竞争）
-            import fcntl
-
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        except (ImportError, OSError):
-            pass
-        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    manifest["approvalSha256"] = approval_sha
-    save(run_dir, manifest)
-    print(f"已锚定：manifest.approvalSha256={approval_sha[:16]}…")
-    print(f"日志追加：{log_path}（runId={row['runId']}）")
-    return 0
-
-
-def verify_anchor(run_dir: Path, manifest: dict, log_path: Path, strict: bool,
-                  fails: list[str], warns: list[str]) -> None:
-    approval_path = run_dir / "07-audit" / "approval.json"
-    man_sha = manifest.get("approvalSha256")
-    if not man_sha:
-        msg = "缺锚定：manifest 无 approvalSha256（团长应跑 manifest.py anchor）"
-        (fails if strict else warns).append(msg)
-        print(("[FAIL] " if strict else "[warn] ") + msg)
-        return
-    if not approval_path.is_file():
-        fails.append("锚定失败：approval.json 不存在")
-        print("[FAIL] 锚定：approval.json 不存在")
-        return
-    approval_sha = sha256_of(approval_path)
-    if approval_sha != man_sha:
-        fails.append(f"锚定不符：approval.json sha256={approval_sha[:16]}… ≠ manifest {str(man_sha)[:16]}…（approval 被改过）")
-        print(f"[FAIL] 锚定：approval.json 与 manifest 不符（{approval_sha[:16]}… ≠ {str(man_sha)[:16]}…）")
-        return
-    try:
-        approval = json.loads(approval_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        fails.append("锚定失败：approval.json 解析失败")
-        return
-    payload_rel = str(approval.get("payload") or "")
-    payload_path = within(run_dir, payload_rel) if payload_rel else None
-    if payload_path is None:
-        print(f"拒绝锚定：approval.payload 路径越界 {payload_rel!r}", file=sys.stderr)
-        return 1
-    if not payload_path.is_file():
-        fails.append(f"锚定失败：approval.payload 不存在 {payload_rel!r}")
-        print(f"[FAIL] 锚定：approval.payload 不存在 {payload_rel!r}")
-        return
-    payload_sha = sha256_of(payload_path)
-    if approval.get("sha256") != payload_sha:
-        fails.append(f"锚定不符：payload sha256={payload_sha[:16]}… ≠ approval {str(approval.get('sha256'))[:16]}…（payload 被换过）")
-        print(f"[FAIL] 锚定：payload 与 approval 声明的 sha 不符")
-        return
-    # 日志三方核对
-    rows = [r for r in _read_log(log_path) if r.get("runId") == safe_run_id(run_dir, manifest)]
-    if not rows:
-        msg = f"缺锚定日志：{log_path} 无该 run 记录"
-        (fails if strict else warns).append(msg)
-        print(("[FAIL] " if strict else "[warn] ") + msg)
-    else:
-        hit = rows[-1]
-        if hit.get("approvalSha256") != man_sha or hit.get("payloadSha256") != payload_sha:
-            fails.append("锚定不符：approvals.log 与 manifest/approval 不一致")
-            print("[FAIL] 锚定：approvals.log 与 manifest/approval 不一致")
-        else:
-            print("[ok]   锚定：approval / manifest / approvals.log 三方一致")
-    broken, total = _log_chain_broken(log_path)
-    if broken:
-        fails.append(f"锚定日志链断裂：{broken}/{total} 行 prev 不匹配")
-        print(f"[FAIL] 锚定日志链断裂：{broken}/{total} 行")
-    elif total:
-        print(f"[ok]   锚定日志链完整（{total} 行）")
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="ECWF run 状态机")
     ap.add_argument("--run", help="runId（目录名），默认取最新")
@@ -516,14 +312,8 @@ def main(argv: list[str] | None = None) -> int:
     p_retry.add_argument("stage", choices=STAGES)
     p_retry.add_argument("--force", action="store_true")
 
-    p_anchor = sub.add_parser("anchor", help="审计锚定：写 manifest.approvalSha256 + approvals.log")
-    p_anchor.add_argument("--approval", default="07-audit/approval.json")
-    p_anchor.add_argument("--log", default=None, help="覆盖日志路径（默认 audit/approvals/<runId>.log）")
-
     p_verify = sub.add_parser("verify", help="版本↔文件名绑定 + 将发送文件 sha256 对账")
     p_verify.add_argument("--record", action="store_true", help="把 06-payloads 执行版 sha256 写回 manifest")
-    p_verify.add_argument("--strict-anchor", action="store_true", help="缺锚定记录/日志链断裂即 FAIL")
-    p_verify.add_argument("--log", default=None, help="覆盖日志路径（默认按 run 分片，回退旧全局日志）")
     p_verify.add_argument("--require-approval", action="store_true", help="缺 07-audit/approval.json 即 FAIL（推荐 ⑧ 前用）")
 
     args = ap.parse_args(argv)
@@ -561,14 +351,10 @@ def main(argv: list[str] | None = None) -> int:
         return lint_files(run_dir)
 
     if args.cmd == "verify":
-        rc = verify(run_dir, manifest, args.record, args.require_approval,
-                    args.strict_anchor, Path(args.log) if args.log else None)
+        rc = verify(run_dir, manifest, args.record, args.require_approval)
         if args.record:
             save(run_dir, manifest)
         return rc
-
-    if args.cmd == "anchor":
-        return do_anchor(run_dir, manifest, args.approval, Path(args.log) if args.log else None)
 
     if args.cmd == "retry":
         entry = manifest.setdefault("stages", {}).setdefault(args.stage, {"status": "pending"})
@@ -615,12 +401,6 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             if not (run_dir / "08-execution" / "user-confirmation.json").is_file():
                 print("拒绝置 success：缺 08-execution/user-confirmation.json（用户书面确认开量）", file=sys.stderr)
-                return 1
-            if not manifest.get("approvalSha256"):
-                print("拒绝置 success：未锚定（缺 manifest.approvalSha256，先跑 manifest.py anchor）", file=sys.stderr)
-                return 1
-            if sha256_of(run_dir / "07-audit" / "approval.json") != manifest.get("approvalSha256"):
-                print("拒绝置 success：approval.json 与锚定值不符（锚定后被改过）", file=sys.stderr)
                 return 1
             try:
                 _ap = json.loads((run_dir / "07-audit" / "approval.json").read_text(encoding="utf-8"))

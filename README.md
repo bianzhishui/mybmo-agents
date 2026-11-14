@@ -66,8 +66,6 @@
 - `bash scripts/preflight.sh --run <runId>`：一条命令跑 validate / verify / lint-files / snapshot_diff / **gate_check --for execute**（默认；`--skip-gates` 半成品自检用）
 - `python3 scripts/gate_check.py --for execute|unpause|delete`：启动 / 开量 / 删除前硬闸（审计放行件 + 人工闸 + 用户确认）
 - `07-audit/approval.json`：审计放行的唯一机读凭据；`08-execution` 未拿到不得置 done
-- ⚠ 锚点只存本机（不入库）：`git clean -xfd` 会删掉 `audit/approvals/`，请自行备份。
-- `python3 scripts/manifest.py --run <runId> anchor`：审计锚定——`sha256(approval)` 写入 manifest + `audit/approvals/<runId>.log`（按 run 分片、本机存储、带 prev 链），`verify --strict-anchor` 三方比对
 - `python3 -m unittest discover -s tests -v`：脚本回归全绿
 
 ## 自动校验（§5.6 的落地实现）

@@ -339,7 +339,7 @@ mybmo-agents/
     ├── _enums.py                  # 共用枚举（excludeTrans 含 "0" 等）
     ├── preflight.sh               # ⑧-1 一键预检（5 项）
     ├── new_run.py                 # 建 run（8 目录 + .gitignore + manifest + 同 slug 检查）
-    ├── manifest.py                # 状态机 + verify / anchor / gate / retry / lint-files / final
+    ├── manifest.py                # 状态机 + verify / gate / retry / lint-files / final
     ├── gate_check.py              # 启动/开量/删除硬闸
     ├── record_call.py             # 追加 calls.jsonl（prev 链 + account）
     ├── snapshot_diff.py           # before/after 比对（可 --fail-on-unexpected）
@@ -361,11 +361,10 @@ mybmo-agents/
 | 机制 | 说明 |
 |---|---|
 | **审计放行件** | 成员7 通过时落 `07-audit/approval.json`（payload + sha256 + pass + evidence）；08 未拿到不得置 done |
-| **审计锚定** | 团长 `manifest.py anchor`：`sha256(approval)` 写入 `manifest.approvalSha256` + `audit/approvals/<runId>.log`（按 run 分片、prev 链、**本机存储、不入库**）；`verify --strict-anchor` 三方比对 |
 | **人工闸 G1~G6** | `manifest.pendingGates`；开量前 `gate_check --for unpause` 要求全 closed + `user-confirmation.json` |
-| **启动/删除闸** | `gate_check --for execute/delete`（01~07 done + approval pass + 已锚定 / 删除二次确认） |
+| **启动/删除闸** | `gate_check --for execute/delete`（01~07 done + approval pass / 删除二次确认） |
 | **一键预检** | `scripts/preflight.sh`（validate + verify + lint-files + snapshot_diff + gate_check） |
-| **机检加固** | 占位文本、图片尺寸白名单、`region` 形制、⑤↔⑥ 追溯键（多计划）、calls/approvals hash 链、账户一致性、未知文件/目录 |
+| **机检加固** | 占位文本、图片尺寸白名单、`region` 形制、⑤↔⑥ 追溯键（多计划）、calls hash 链、账户一致性、未知文件/目录 |
 | **状态机** | `version == 文件名 .vN` 强绑定；未闭环闸不许 `final success`；`retry` 硬上限 3 次 |
 | **回归与 CI** | `tests/` 66 例；`.github/workflows/ci.yml` |
 

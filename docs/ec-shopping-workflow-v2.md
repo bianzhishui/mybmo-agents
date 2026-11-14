@@ -204,7 +204,7 @@ API 参数
 
 | # | 动作 | 能力 | 成功判据 |
 |---|---|---|---|
-| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>`（默认含 gate_check --for execute）**。**前置：团长已 `manifest.py anchor`**，否则会判「未锚定」 | 授权正常、字段无缺、预检 PASS |
+| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>`（默认含 gate_check --for execute）** | 授权正常、字段无缺、预检 PASS |
 | 2 | **图片入库** | `uploadImage`（`addImage=true`，members4 提供的 base64） | 返回 `imageId`，回填映射表 |
 | 3 | **建词包** | `addKeywordPackages`（成员2 的 `keywordPackageTypes`） | 返回 `packageId`，`getKeywordPackages` 回读存在 |
 | 4 | **建计划** | `addCampaignShopping`（`pause=true`，`material` 引用步骤2 的 `imageId`） | 返回 `campaignShoppingId`，`succ=oprs` |
@@ -379,19 +379,18 @@ API 参数
 | 闸门 | 机制 | 脚本 |
 |---|---|---|
 | **审计放行件** | 成员7 产出 `07-audit/approval.json`（`result:pass` + `payload` + `sha256` + `evidence`）；`verify` 把现场 sha 与它对账，且 `08-execution` 未拿到放行件不得置 done | `manifest.py verify [--require-approval]` |
-| **审计锚定（防偷改）** | 团长跑 `anchor`：把 `sha256(approval.json)` 写进 `manifest.approvalSha256`，并追加该 run 的分片日志 `audit/approvals/<runId>.log`（独立 `prev` 链、**只存本机、不入库**，多 run 并行互不干扰）；`verify --strict-anchor` 三方比对（payload / approval / 日志）。旧全局 `audit/approvals.log` 仅迁移期回退读取 | `manifest.py anchor` + `verify --strict-anchor` |
-| **启动/开量/删除硬闸** | 启动前：01~07 done + approval pass + **已锚定**；开量前：G1~G6 全 closed + `user-confirmation.json`；删除前：`delete-confirmation.json` | `gate_check.py --for execute\|unpause\|delete` |
+| **启动/开量/删除硬闸** | 启动前：01~07 done + approval pass；开量前：G1~G6 全 closed + `user-confirmation.json`；删除前：`delete-confirmation.json` | `gate_check.py --for execute\|unpause\|delete` |
 | **状态机顺序** | `set … done` 强制前置阶段 done + 文件存在；越级需 `--force` 且留痕 | `manifest.py set` |
 | **占位文本** | payload 出现"待核实 / `<...>` / `{{...}}`" 直接 FAIL（base64 正文除外） | `validate_payloads.py` |
 | **流水防篡改** | `calls.jsonl` 每行带 `prev`（上一行 sha256）与 `account`；链断裂/账户不符即 FAIL | `record_call.py` + `validate_payloads.py` |
 | **未知结果对账** | 超时/5xx 不重发，先按 capability 给出的查询路径核对后台 | `reconcile.py` |
 | **重试预算** | 每阶段重试硬上限 3 次，超限拒绝 | `manifest.py retry` |
 | **人工闸证据** | `gate … closed` 必须带 `--evidence`（用户原话/call_id） | `manifest.py gate` |
-| **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json` + **已锚定（`manifest.approvalSha256`）**；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
+| **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json` + approval.payload 内容哈希匹配；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
 | **系统文件** | `.DS_Store` 等点文件不参与文件名校验；**未知子目录**（如 `99-junk/`）直接 FAIL | `manifest.py lint-files` |
 
-`preflight.sh` **默认**就包含 `gate_check --for execute`（要求 01~07 done + approval pass + 已锚定 + payload 内容与 `approval.sha256` 相符）；半成品自检用 `--skip-gates`。
-`--strict-anchor` 额外校验 approval 哈希/日志链；`--strict-snapshot` 让非预期字段差异也 FAIL（推荐 ⑧-6）。
+`preflight.sh` **默认**就包含 `gate_check --for execute`（要求 01~07 done + approval pass + payload 内容与 `approval.sha256` 相符）；半成品自检用 `--skip-gates`。
+`--strict-snapshot` 让非预期字段差异也 FAIL（推荐 ⑧-6）。
 
 ## 六、产出物模板
 
