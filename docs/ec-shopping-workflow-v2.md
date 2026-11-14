@@ -330,7 +330,10 @@ API 参数
 ### 5.6 执行前自动校验（成员8 第 1 步就做）
 
 1. **模板校验**：`06-payloads/*.json` 逐份对项目内置 `schemas/` 的 JSON Schema 校验（驼峰、必填齐、`imageId` 是否为占位符）
-2. **占位符校验**：扫 `06-payloads/`，若出现**具体数字 `imageId` 但 `04-assets/image-map.json` 无对应记录** → 判定编造，直接打回成员6
+2. **占位符校验**：扫 `06-payloads/`，若出现**具体数字 `imageId` 但最新 `04-assets/image-map.vN.json` 无对应记录** → 判定编造，直接打回成员6
+3. **⑤↔⑥ 追溯键校验（P2-1 / 建议10）**：读 `05-plan/plan-draft*.json` 最新版，把 ⑤ 的 `PENDING:<file>`
+   经 image-map 解析出 imageId，再与 ⑥ 的取值对齐；⑤ 的编号在 image-map 里查不到＝链断，直接 FAIL
+   （不再依赖 `_notes` 里的"偏离声明"兜底）
 
 把"人检查"变成"机器检查"，是这层规范最大的价值。
 

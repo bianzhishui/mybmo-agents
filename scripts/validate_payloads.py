@@ -377,6 +377,94 @@ def check_audience_enums(payload: Any, report: Report) -> None:
             report.ok(f"plan[{idx}].audience.interests", "interests 已带")
 
 
+def check_plan_payload_consistency(
+    payload: Any, run_dir: Path, report: Report, explicit_map: str | None = None
+) -> None:
+    """⑤ 计划草案与 ⑥ payload 的图片追溯键必须一致（P2-1 / 建议10）。
+
+    规则（按"⑤ 占位符 → image-map 查 imageId → 对 ⑥ 的取值"判定，而不是简单字符串比对）：
+      - ⑤ `PENDING:<file>` + ⑥ 整数  → 该整数必须等于 image-map 里 <file> 的 imageId
+      - ⑤ `PENDING:<file>` + ⑥ 同一占位符 → PASS（都待回填）
+      - 两边都是整数 → 必须相等
+      - ⑤ 的占位符在 image-map 里查不到 → FAIL（编号失效/链断）
+    """
+    if not isinstance(payload, dict):
+        return
+    plan_path = pick_latest(run_dir / "05-plan", "plan-draft.json")
+    if plan_path is None:
+        report.warn("05-plan", "找不到 plan-draft*.json，跳过 ⑤↔⑥ 追溯键一致性检查")
+        return
+    try:
+        plan = load_json(plan_path)
+    except (json.JSONDecodeError, OSError) as exc:
+        report.fail("05-plan", f"{plan_path.name} 读取失败：{exc}")
+        return
+    image_map, map_label = load_image_map(run_dir, explicit_map)
+
+    plans = plan.get("campaignShoppingTypes") or []
+    payloads = payload.get("campaignShoppingTypes") or []
+    if not plans or not payloads:
+        report.warn("05-plan", "⑤ 或 ⑥ 没有 campaignShoppingTypes，跳过一致性检查")
+        return
+
+    def norm_pics(c: Any) -> list:
+        return (((c or {}).get("material") or {}).get("pictures")) or []
+
+    p_pics = norm_pics(plans[0])
+    y_pics = norm_pics(payloads[0])
+    if len(p_pics) != len(y_pics):
+        report.fail(
+            "05-plan↔06-payload",
+            f"pictures 张数不一致：⑤ {len(p_pics)} 张 / ⑥ {len(y_pics)} 张（{plan_path.name}）",
+        )
+        return
+    if not p_pics:
+        report.warn("05-plan↔06-payload", "pictures 为空，跳过追溯键检查")
+        return
+
+    for i, (pp, yp) in enumerate(zip(p_pics, y_pics)):
+        label = f"traceKey[{i}]"
+        pv = (pp or {}).get("imageId")
+        yv = (yp or {}).get("imageId")
+        pm = PENDING_RE.match(str(pv)) if not isinstance(pv, int) else None
+        expected = None
+        if pm:
+            entry = image_map.get(pm.group(1))
+            if entry is None:
+                report.fail(
+                    label,
+                    f"⑤ {plan_path.name} 的 {pv} 在 {map_label} 里查不到该素材 "
+                    "（编号失效/链断，见 P2-1/P2-4）",
+                )
+                continue
+            expected = entry.get("imageId")
+        elif isinstance(pv, int):
+            expected = pv
+        else:
+            report.fail(label, f"⑤ 的 imageId 既非整数也非 PENDING 占位符：{pv!r}")
+            continue
+
+        if isinstance(yv, int):
+            if isinstance(expected, int) and yv == expected:
+                report.ok(label, f"⑤ {pv} ↔ ⑥ {yv}（经 {map_label} 对齐）")
+            elif expected is None or not isinstance(expected, int):
+                report.warn(
+                    label,
+                    f"⑤ {pv} 对应的素材尚未回填 imageId，⑥ 已是整数 {yv}（可能已手工回填，人工确认）",
+                )
+            else:
+                report.fail(
+                    label,
+                    f"⑤ {pv} 对应 imageId={expected}，但 ⑥ 用的是 {yv} —— 追溯键不一致",
+                )
+        else:
+            ym = PENDING_RE.match(str(yv))
+            if ym and pm and ym.group(1) == pm.group(1):
+                report.ok(label, f"⑤⑥ 同为 {yv}（均待回填）")
+            else:
+                report.fail(label, f"⑤ 是 {pv!r} 而 ⑥ 是 {yv!r} —— 追溯键不一致")
+
+
 def check_copy_forbidden(run_dir: Path, report: Report) -> None:
     path = run_dir / "03-copy" / "copy.json"
     if not path.is_file():
@@ -426,6 +514,9 @@ def main(argv: list[str] | None = None) -> int:
     check_image_ids(payloads, run_dir, report, args.image_map)
     check_plan_rules(payloads.get("addCampaignShopping.json"), report)
     check_audience_enums(payloads.get("addCampaignShopping.json"), report)
+    check_plan_payload_consistency(
+        payloads.get("addCampaignShopping.json"), run_dir, report, args.image_map
+    )
     check_copy_forbidden(run_dir, report)
 
     if args.json:
