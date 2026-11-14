@@ -364,6 +364,9 @@ API 参数
 | 归档 | 超期移到 `.ecwf/archive/<runId>.tar.gz`（保留 `manifest` + `08-execution/`，丢 `.b64`） |
 | 删除 | 只允许删 `pending` / `rejected` 的 run；`finalStatus=success` 的 run 不自动删 |
 
+归档用 `python3 scripts/archive_runs.py --older-than 30 [--delete] [--dry-run]`：
+打包到 `.ecwf/archive/<runId>.tar.gz`、丢 `*.b64`、保留 `manifest.json` + 全部产物；`running` 永不归档/删除。
+
 ---
 
 ## 六、产出物模板

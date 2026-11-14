@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# 本地提交前快速校验（可选）：git config core.hooksPath .githooks
+set -e
+PY=".venv/bin/python"; [ -x "$PY" ] || PY="python3"
+"$PY" -m py_compile scripts/*.py
+bash -n scripts/preflight.sh
+"$PY" -m unittest discover -s tests -q
