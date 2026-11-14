@@ -1,4 +1,5 @@
 {
+  "_note": "⑥ 出 payload 以 templates/campaign-baseline.json 为骨架替换取值，禁止按 schema 从零拼。audience 必带键只有 interests；fcKeywordWtpids 走 ⑧-5 绑包，不写占位符。",
   "campaignShoppingTypes": [
     {
       "campaignShoppingName": "<商品>-<策略>-<YYYYMMDD>",
@@ -21,14 +22,26 @@
         }
       ],
       "audience": {
+        "regionType": "0",
         "region": "9999999",
-        "fcKeywordWtpids": "<成员2词包ID>",
+        "sex": "0",
+        "age": "0",
+        "customAge": "0",
+        "interests": "0",
+        "crowd": "0",
+        "etradecrowds": "0",
+        "excludeCrowd": "",
+        "excludeTrans": "0",
+        "keywords": "<02-keywords 词，逗号分隔>",
         "keywordsExtend": "1",
         "intelligentWeight": "1"
       },
       "ideaType": 1,
       "material": {
         "brand": "待核实",
+        "userPortrait": {
+          "imageId": "<已过审品牌头像 imageId（120×120，复用图库既有头像）>"
+        },
         "title": [
           {
             "text": "<9-60字符>"
@@ -41,7 +54,7 @@
         ],
         "pictures": [
           {
-            "imageId": "PENDING:img-001"
+            "imageId": "PENDING:img-001.png"
           }
         ]
       }

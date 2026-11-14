@@ -1,5 +1,5 @@
 {
-  "_note": "A7 计划结构草案。material.pictures[].imageId 用 PENDING 占位，禁止填具体数字。",
+  "_note": "A7 计划结构草案。⑥ 出 payload 时以 templates/campaign-baseline.json 为骨架替换取值，不从零拼；material.pictures[].imageId 用 PENDING:<img-00N>.<ext> 占位，禁止填具体数字。",
   "campaignShoppingName": "<商品>-<策略>-<YYYYMMDD>",
   "targetType": 1,
   "eshopType": 1,
@@ -19,14 +19,25 @@
     }
   ],
   "audience": {
+    "regionType": "0",
     "region": "9999999",
-    "fcKeywordWtpids": "<成员2词包ID>",
+    "sex": "0",
+    "age": "0",
+    "customAge": "0",
+    "interests": "0",
+    "crowd": "0",
+    "etradecrowds": "0",
+    "excludeCrowd": "",
+    "excludeTrans": "0",
     "keywordsExtend": "1",
     "intelligentWeight": "1"
   },
   "ideaType": 1,
   "material": {
     "brand": "待核实",
+    "userPortrait": {
+      "imageId": "<复用已过审品牌头像 imageId，120×120>"
+    },
     "title": [
       {
         "text": "<9-60字符>"
@@ -39,7 +50,7 @@
     ],
     "pictures": [
       {
-        "imageId": "PENDING:img-001"
+        "imageId": "PENDING:img-001.png"
       }
     ]
   },

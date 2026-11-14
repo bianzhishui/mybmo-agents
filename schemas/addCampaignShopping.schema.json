@@ -239,9 +239,10 @@
       "additionalProperties": false,
       "required": [
         "brand",
-        "title"
+        "title",
+        "userPortrait"
       ],
-      "description": "material 是整体替换；brand 为空则素材全空",
+      "description": "material 是整体替换；brand 为空则素材全空。userPortrait（品牌头像 120×120）必带——缺 → 901217「创意设置品牌头像错误」（实测 call f544250ba6ae 失败 / 98b453c47249 成功）。",
       "properties": {
         "brand": {
           "type": "string",
@@ -291,6 +292,19 @@
           "type": "array",
           "minItems": 0,
           "maxItems": 18,
+          "description": "张数上限 18（19 张 → 901217「创意设置图片数量超过上限」；服务端拦，参数校验不拦）。尺寸是精确宽高白名单、方向固定，见 x-platform-allowedSizes。",
+          "x-maxItemsOnServer": 18,
+          "x-platform-allowedSizes": {
+            "product": [
+              [370, 245],
+              [1140, 640],
+              [750, 1000]
+            ],
+            "live-custom": [
+              [1140, 640]
+            ]
+          },
+          "x-sizeNote": "精确宽高匹配、方向固定：375×248 / 960×540（同为 16:9）/ 1000×750 / 640×1140 实测全被 901217 拒；750×1000 过、1000×750 不过。禁止按宽高比或最小尺寸推导。",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -355,6 +369,9 @@
           "required": [
             "imageId"
           ],
+          "description": "品牌头像，规格 120×120（必带）。可直接复用图库/既有计划里已过审的头像 imageId。",
+          "x-requiredOnServer": true,
+          "x-size": "120x120",
           "properties": {
             "imageId": {
               "type": "integer",
@@ -367,7 +384,10 @@
     "audience": {
       "type": "object",
       "additionalProperties": false,
-      "description": "扁平 Map；未知键在接口侧会被静默忽略，故此处白名单校验",
+      "required": [
+        "interests"
+      ],
+      "description": "扁平 Map；未知键在接口侧会被静默忽略，故此处白名单校验。键级必带只有 interests（缺 → 901216「兴趣错误」；空对象 {} → 901214「定向信息为空」）；其余键可省，服务端补默认值（region=9999999、keywords=\"\"、fcKeywordWtpids=\"\"、intelligentWeight=\"0\"…）。写 12 键、读回 13 键（多 excludeTrans）、绑包后 14 键属正常。",
       "properties": {
         "sex": {
           "oneOf": [
@@ -474,12 +494,14 @@
         },
         "excludeTrans": {
           "enum": [
+            "0",
             "1",
             "4",
+            0,
             1,
             4
           ],
-          "description": "1 同账户 / 4 同主体"
+          "description": "1 同账户 / 4 同主体 / 0 不限（服务端接受且默认 \"0\"；官方枚举只写 1/4 是漏的）"
         },
         "fcKeywordWtpids": {
           "type": "string",

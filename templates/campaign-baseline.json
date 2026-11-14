@@ -1,0 +1,86 @@
+{
+  "_doc": "⑥ 出 payload 的【骨架】。取值以本账户一条真实计划的读回为准，⑥ 只做『替换取值』，禁止按 schema 从零拼。",
+  "_provenance": {
+    "account": "main（baidu-YF电商-玛卡快消01）",
+    "sourcePlanId": 2387079078,
+    "readCapability": "CampaignShoppingService.getCampaignShopping（只读）",
+    "callId": "afd94c95cacd",
+    "readAt": "2026-11-13T16:08:36+08:00",
+    "rawReadback": ".ecwf/runs/20261113-152948-jewelry-clean/08-execution/after-snapshot.json#rawReadback",
+    "keySetCrossCheck": "audience 键集合与本账户在投计划 2079251858 / 2376038055 一致（12 键 + 服务端默认 excludeTrans + 绑包后 fcKeywordWtpids = 14 键）；用户与审计均可复核。",
+    "note": "本文件是骨架不是成品：所有 <尖括号> 处替换为本单取值；未标注的数值型字段（region/sex/age/interests…）可直接沿用（=不限）。"
+  },
+  "_easyErrors": [
+    "① material.userPortrait 必带（120×120 品牌头像）。缺 → 901217「创意设置品牌头像错误」；证据 call f544250ba6ae 失败 / 98b453c47249 成功。复用图库已过审头像即可（本例 imageId=15505964077，astat=2、120×120）。",
+    "② audience 的键级必带只有 interests（缺 → 901216「兴趣错误」；空对象 {} → 901214「定向信息为空」）。其余 13 键可省，服务端会补默认值（region=9999999、keywords=\"\"、fcKeywordWtpids=\"\"、intelligentWeight=\"0\"…），所以『写 12 键、读回 13 键（多 excludeTrans）、绑包后 14 键』是正常现象，对账以读回为准。",
+    "③ material.pictures 是【精确宽高白名单、方向固定】：商品推广只有 370×245 / 1140×640 / 750×1000（自定义直播推广只有 1140×640）。不是『宽高比』也不是『最小尺寸』——375×248、960×540（同为 16:9）、1000×750、640×1140 全部被 901217 拒；750×1000 过、1000×750 不过。张数上限 18（19 张 → 901217「创意设置图片数量超过上限」，schema 无 maxItems、拦在服务端）。"
+  ],
+  "_serverDefaults": {
+    "说明": "以下键不写时服务端会补默认值；本骨架按读回值显式列出，便于审计逐键比对。",
+    "region": "9999999 = 不限地域。⚠ 传非法值（如中文『全国』）不报错：建单成功、响应 region=\"\"、读回被静默放大为 9999999。→ 只传地域码，写完必须回读 region 校验。",
+    "excludeTrans": "\"0\" = 不限（服务端接受并有该默认值；官方枚举只写 1/4 是漏的）",
+    "fcKeywordWtpids": "\"\" 建单时为空；由 ⑧-5 bindPlanKeywordPackages 写入（包→计划替换式、计划→包累加）",
+    "intelligentWeight": "\"0\" = 不用智能放量"
+  },
+  "campaignShoppingTypes": [
+    {
+      "campaignShoppingName": "<商品>-<策略>-<YYYYMMDD>",
+      "pause": true,
+      "targetType": 1,
+      "eshopType": 1,
+      "productId": "<getProduct 实测 productId>",
+      "productName": "<getProduct 实测 productName>",
+      "campaignType": 1,
+      "budget": 100.0,
+      "ocpcBid": 1.24,
+      "transType": 90,
+      "ideaType": 1,
+      "startTime": "<YYYY-MM-DD>",
+      "endTime": "9999-01-01",
+      "schedule": [
+        { "weekDay": 1, "startHour": 0, "endHour": 24 },
+        { "weekDay": 2, "startHour": 0, "endHour": 24 },
+        { "weekDay": 3, "startHour": 0, "endHour": 24 },
+        { "weekDay": 4, "startHour": 0, "endHour": 24 },
+        { "weekDay": 5, "startHour": 0, "endHour": 24 },
+        { "weekDay": 6, "startHour": 0, "endHour": 24 },
+        { "weekDay": 7, "startHour": 0, "endHour": 24 }
+      ],
+      "audience": {
+        "regionType": "0",
+        "region": "9999999",
+        "sex": "0",
+        "age": "0",
+        "customAge": "0",
+        "interests": "0",
+        "crowd": "0",
+        "etradecrowds": "0",
+        "excludeCrowd": "",
+        "excludeTrans": "0",
+        "keywords": "<02-keywords 词，逗号分隔，≤2000>",
+        "keywordsExtend": "1",
+        "intelligentWeight": "1",
+        "fcKeywordWtpids": ""
+      },
+      "material": {
+        "brand": "<用户确认的 brand>",
+        "userPortrait": {
+          "imageId": 15505964077
+        },
+        "title": [
+          { "text": "<9-60 字符标题 #1>" },
+          { "text": "<9-60 字符标题 #2>" }
+        ],
+        "description": [
+          { "text": "<9-80 字符描述 #1>" },
+          { "text": "<9-80 字符描述 #2>" }
+        ],
+        "pictures": [
+          { "imageId": "PENDING:img-001.png" }
+        ],
+        "fengchaoTitle": [],
+        "videos": []
+      }
+    }
+  ]
+}

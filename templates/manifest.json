@@ -42,5 +42,12 @@
     "rejected",
     "frozen"
   ],
+  "_finalStatusEnum": [
+    "running",
+    "success",
+    "success-paused",
+    "failed",
+    "abandoned"
+  ],
   "_note": "rejected 必须带 reason 与 retryTo"
 }
