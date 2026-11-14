@@ -661,6 +661,68 @@ class TestFinalGaps(RunCase):
         self.assertIsNone(m["assets"][-1]["imageId"])
 
 
+class TestRound8(RunCase):
+    def _anchor(self):
+        log = self.tmp / "a.log"
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", "--log", str(log))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return log
+
+    def test_gate_check_detects_approval_tamper(self):
+        self._anchor()
+        ap = self.load("07-audit/approval.json")
+        ap["evidence"] = ["forged"]
+        self.save("07-audit/approval.json", ap)
+        r = run("gate_check.py", "--run-dir", str(self.run_dir), "--for", "execute")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不符", r.stdout)
+
+    def test_final_success_detects_anchor_mismatch(self):
+        self._anchor()
+        ap = self.load("07-audit/approval.json")
+        ap["evidence"] = ["forged"]
+        self.save("07-audit/approval.json", ap)
+        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        m["pendingGates"] = {}
+        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(
+            json.dumps({"confirmedBy": "u", "quote": "ok"}), encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("锚定值不符", r.stderr)
+
+    def test_record_call_rejects_bad_call_id(self):
+        r = run("record_call.py", "--run-dir", str(self.run_dir), "--step", "8-2",
+                "--capability", "uploadImage", "--call-id", "not-a-call-id", "--state", "ok")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("十六进制", r.stderr)
+
+    def test_backfill_does_not_overwrite_map_version(self):
+        (self.run_dir / "04-assets" / "image-map.v2.json").write_text(
+            (self.run_dir / "04-assets" / "image-map.json").read_text(encoding="utf-8"), encoding="utf-8")
+        resp = self.tmp / "resp.json"
+        resp.write_text(json.dumps({"data": [{"imageId": 777, "width": 750, "height": 1000,
+                                              "signature": "0123456789abcdef0123456789abcdef"}]}),
+                        encoding="utf-8")
+        r = run("backfill_image_ids.py", "--run-dir", str(self.run_dir), "--response", str(resp))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        files = {p.name for p in (self.run_dir / "04-assets").glob("image-map*.json")}
+        self.assertIn("image-map.v3.json", files)
+        # v2 未被改写（内容仍无 777）
+        self.assertNotIn("777", (self.run_dir / "04-assets" / "image-map.v2.json").read_text(encoding="utf-8"))
+
+    def test_scaffold_rejects_too_many_keywords(self):
+        (self.run_dir / "05-plan" / "plan-draft.json").unlink()
+        (self.run_dir / "06-payloads" / "addCampaignShopping.json").unlink()
+        pk = {"keywordPackageTypes": [{"packageName": "大包",
+              "keywordTypes": [{"keyword": f"词{i}", "id": 0} for i in range(2001)]}]}
+        (self.run_dir / "02-keywords" / "packages.json").write_text(json.dumps(pk), encoding="utf-8")
+        r = run("scaffold_plan.py", "--run-dir", str(self.run_dir), "--name", "x",
+                "--budget", "100", "--bid", "1.24", "--user-portrait", "1", "--force")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("2000", r.stdout)
+
+
 class TestSnapshotEnums(unittest.TestCase):
     def test_exclude_trans_zero_is_legal(self):
         sys.path.insert(0, str(SCRIPTS))

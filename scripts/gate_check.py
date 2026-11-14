@@ -18,11 +18,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 from _runbook import STAGES, resolve_run_dir
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def load(path: Path):
@@ -60,14 +69,23 @@ def main(argv: list[str] | None = None) -> int:
             problems.append("07-audit/approval.json 不是合法 JSON")
         elif approval.get("result") != "pass":
             problems.append(f"审计结论非 pass：{approval.get('result')!r}")
+        else:
+            man_sha = manifest.get("approvalSha256")
+            if not man_sha:
+                problems.append("未锚定（缺 manifest.approvalSha256；先跑 manifest.py anchor）")
+            elif sha256_of(ap_file) != man_sha:
+                problems.append("approval.json 与 manifest.approvalSha256 不符（锚定后被改过）")
+            stage06 = (manifest.get("stages") or {}).get("06-payloads", {}).get("file")
+            payload_rel = str(approval.get("payload") or "")
+            if stage06 and payload_rel and Path(stage06).name != Path(payload_rel).name:
+                problems.append(f"approval.payload={Path(payload_rel).name} ≠ manifest 06={Path(stage06).name}")
 
     if args.target == "execute":
         stages = manifest.get("stages", {})
         not_done = [s for s in STAGES[:7] if stages.get(s, {}).get("status") != "done"]
         if not_done:
             problems.append(f"01~07 未全部 done：{not_done}")
-        if not manifest.get("approvalSha256"):
-            problems.append("未锚定（缺 manifest.approvalSha256；先跑 manifest.py anchor）")
+
 
     if args.target == "unpause":
         gates = manifest.get("pendingGates") or {}

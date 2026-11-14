@@ -220,6 +220,17 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = resolve_run_dir(args.run, args.run_dir)
     assets_dir = run_dir / "04-assets"
     files = collect_inputs(args.sources)
+    # 同一文件重复传入会生成两条同名记录；按真实路径去重
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for f in files:
+        rp = f.resolve()
+        if rp in seen:
+            print(f"[WARN] 忽略重复输入：{f}", file=sys.stderr)
+            continue
+        seen.add(rp)
+        uniq.append(f)
+    files = uniq
     problems: list[str] = []
 
     if not files:

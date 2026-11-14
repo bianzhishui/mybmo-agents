@@ -638,6 +638,9 @@ def main(argv: list[str] | None = None) -> int:
             if not manifest.get("approvalSha256"):
                 print("拒绝置 success：未锚定（缺 manifest.approvalSha256，先跑 manifest.py anchor）", file=sys.stderr)
                 return 1
+            if sha256_of(run_dir / "07-audit" / "approval.json") != manifest.get("approvalSha256"):
+                print("拒绝置 success：approval.json 与锚定值不符（锚定后被改过）", file=sys.stderr)
+                return 1
         manifest["finalStatus"] = args.status
         if args.reason:
             manifest.setdefault("finalStatusNote", {})["reason"] = args.reason

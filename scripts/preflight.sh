@@ -6,6 +6,7 @@
 #   bash scripts/preflight.sh --run <runId> --skip-snapshot
 #   （默认包含 gate_check --for execute；--skip-gates 可跳过）
 #   --strict-anchor   锚定缺失/日志链断裂即 FAIL（推荐 ⑧ 用）
+#   --strict-snapshot 非预期字段差异即 FAIL（推荐 ⑧-6 用）
 #
 # 依次执行：
 #   1) validate_payloads.py  —— schema / 占位符 / imageId 追溯 / 业务枚举 / ⑤↔⑥ / 尺寸 / 自述对账
@@ -25,6 +26,7 @@ RUN_ARGS=()
 SKIP_SNAPSHOT=0
 WITH_GATES=1  # 默认跑 gate_check --for execute
 STRICT_ANCHOR=0
+STRICT_SNAPSHOT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --run|--run-dir)
@@ -34,6 +36,7 @@ while [ $# -gt 0 ]; do
     --with-gates) WITH_GATES=1; shift ;;
     --skip-gates) WITH_GATES=-1; shift ;;
     --strict-anchor) STRICT_ANCHOR=1; shift ;;
+    --strict-snapshot) STRICT_SNAPSHOT=1; shift ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "未知参数：$1" >&2; exit 2 ;;
   esac
@@ -49,11 +52,11 @@ run_step() {
 
 run_step "1/4 validate_payloads" "$PY" "$ROOT/scripts/validate_payloads.py" "${RUN_ARGS[@]}"
 if [ "$STRICT_ANCHOR" -eq 1 ]; then
-  run_step "2/4 manifest verify（strict-anchor）" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify --strict-anchor
+  run_step "2/5 manifest verify（strict-anchor）" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify --strict-anchor
 else
-  run_step "2/4 manifest verify" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify
+  run_step "2/5 manifest verify" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" verify
 fi
-run_step "3/4 manifest lint-files" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" lint-files
+run_step "3/5 manifest lint-files" "$PY" "$ROOT/scripts/manifest.py" "${RUN_ARGS[@]}" lint-files
 
 if [ "$WITH_GATES" -eq 1 ]; then
   run_step "5/5 gate_check --for execute" "$PY" "$ROOT/scripts/gate_check.py" "${RUN_ARGS[@]}" --for execute
@@ -68,7 +71,11 @@ if [ "$SKIP_SNAPSHOT" -eq 1 ]; then
 else
   echo
   echo "==================== 4/4 snapshot_diff ===================="
-  "$PY" "$ROOT/scripts/snapshot_diff.py" "${RUN_ARGS[@]}" --allow-diff
+  if [ "$STRICT_SNAPSHOT" -eq 1 ]; then
+    "$PY" "$ROOT/scripts/snapshot_diff.py" "${RUN_ARGS[@]}" --allow-diff --fail-on-unexpected
+  else
+    "$PY" "$ROOT/scripts/snapshot_diff.py" "${RUN_ARGS[@]}" --allow-diff
+  fi
   rc=$?
   if [ "$rc" -eq 2 ]; then
     echo "[skip] 无 before/after 快照，跳过（⑧-6 之前属正常）"

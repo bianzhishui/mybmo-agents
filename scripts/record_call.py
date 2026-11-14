@@ -45,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.call_id.strip():
         print("--call-id 不能为空：没有 call_id 就无法回连 audit_log", file=sys.stderr)
         return 1
+    import re as _re
+    if not _re.fullmatch(r"[0-9a-fA-F]{8,64}", args.call_id.strip()):
+        print(f"--call-id 形如 12 位十六进制（收到 {args.call_id!r}）：无法回连 audit_log", file=sys.stderr)
+        return 1
     if args.state not in {"ok", "failed", "unknown"}:
         print(f"--state 只能是 ok / failed / unknown，收到 {args.state!r}", file=sys.stderr)
         return 1

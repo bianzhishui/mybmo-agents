@@ -391,7 +391,7 @@ API 参数
 | **系统文件** | `.DS_Store` 等点文件不参与文件名校验；**未知子目录**（如 `99-junk/`）直接 FAIL | `manifest.py lint-files` |
 
 `preflight.sh` **默认**就包含 `gate_check --for execute`（审计放行件缺失即 FAIL）；只在做半成品自检时用 `--skip-gates`。
-⑧ 侧建议加 `--strict-anchor`：锚定缺失或日志链断裂即 FAIL。
+⑧ 侧建议加 `--strict-anchor`（锚定缺失/链断裂即 FAIL）；⑧-6 建议加 `--strict-snapshot`（非预期字段差异即 FAIL）。
 
 ## 六、产出物模板
 

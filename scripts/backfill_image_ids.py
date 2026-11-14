@@ -215,6 +215,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             nxt = image_map_version(map_path) + 1
             out_map = map_path.with_name(f"image-map.v{nxt}.json")
+            while out_map.exists():  # 绝不覆盖已存在的更高版本
+                nxt += 1
+                out_map = map_path.with_name(f"image-map.v{nxt}.json")
             image_map["supersedes"] = map_path.name
             image_map["version"] = nxt
         out_map.write_text(json.dumps(image_map, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -489,6 +489,7 @@ def check_calls_integrity(run_dir: Path, report: Report) -> None:
     lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     broken = nochain = 0
     account_bad: list[str] = []
+    account_missing = 0
     prev_raw = ""
     for ln, raw in enumerate(lines, 1):
         try:
@@ -504,6 +505,8 @@ def check_calls_integrity(run_dir: Path, report: Report) -> None:
             nochain += 1
         if manifest_account and row.get("account") and row["account"] != manifest_account:
             account_bad.append(f"第{ln}行 account={row['account']!r}≠manifest {manifest_account!r}")
+        elif manifest_account and not row.get("account"):
+            account_missing += 1
         prev_raw = raw
     if broken:
         report.fail("calls.jsonl 链", f"{broken} 行 prev 不匹配（可能被事后改动）")
@@ -515,7 +518,10 @@ def check_calls_integrity(run_dir: Path, report: Report) -> None:
         for m in account_bad:
             report.fail("calls.jsonl 账户", m)
     elif manifest_account:
-        report.ok("calls.jsonl 账户", f"与 manifest.account={manifest_account!r} 一致")
+        if account_missing:
+            report.warn("calls.jsonl 账户", f"{account_missing} 行未记录 account（旧记录），无法核对账户一致性")
+        else:
+            report.ok("calls.jsonl 账户", f"与 manifest.account={manifest_account!r} 一致")
 
 
 def check_audit_evidence(run_dir: Path, report: Report) -> None:

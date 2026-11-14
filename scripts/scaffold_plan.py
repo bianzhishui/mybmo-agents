@@ -105,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     audience = dict(base_c.get("audience") or {})
     pkg_name, words = pick_package(pkgs, args.package)
     if words:
+        if len(words) > 2000:
+            problems.append(f"02-keywords 选出 {len(words)} 词 > 2000（单计划上限），需先收敛")
         audience["keywords"] = ",".join(words)
     else:
         problems.append("02-keywords 没有可用词包 → audience.keywords 留空")
