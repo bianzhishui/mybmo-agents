@@ -35,6 +35,13 @@
     "campaignShoppingId": null
   },
   "finalStatus": "running",
+  "pendingGates": {
+    "G4": {
+      "desc": "开量前用户书面确认：文案/图内表述与实物一致（如『不伤玉器』）、赠品『送』标属实、budget/ocpcBid 终确认",
+      "status": "open",
+      "closedBy": null
+    }
+  },
   "_statusEnum": [
     "pending",
     "running",
@@ -49,5 +56,6 @@
     "failed",
     "abandoned"
   ],
-  "_note": "rejected 必须带 reason 与 retryTo"
+  "_note": "rejected 必须带 reason 与 retryTo",
+  "_pendingGatesNote": "status: open / closed。未闭环时 finalStatus 不得置 success（可置 success-paused）；用 scripts/manifest.py gate <id> closed 收口。"
 }

@@ -484,3 +484,14 @@ gantt
 > 本 run 的两处历史错位按方案 A **只改记账、不动产物**：`04-assets.version` 7→6（对齐 `image-map.v6.json`）、
 > `07-audit.version` 2→1（文件名无 `.vN`），并在 `07-audit` 条目加 `historyNote` 如实登记
 > "audit-report.md 为第二轮复审、曾原地重写"。改后 `manifest.py verify` 这两条转 PASS。
+
+### 修订补充（2026-11-14 二轮）：建议 9~12 与两条接口语义
+
+| 项 | 修复落点 | 结论 |
+|---|---|---|
+| 建议9（P2-2 延伸） | `validate_payloads.py` 新增"自述 vs 事实"对账：`unchangedFields` 里若有被更正字段、或 `complianceNotesRetained` 的规格数字与 `fields.spec` 矛盾 → FAIL | 反证 v3：报 spec / imageNote / 60mL 三处矛盾；v4 修好后 PASS |
+| 建议10（P2-1） | 新增 ⑤↔⑥ 追溯键硬校验：⑤ 的 `PENDING:<file>` 经 image-map 解析后必须与 ⑥ 一致；⑤ 编号查不到＝链断 FAIL | 本 run 出 `plan-draft.v3.json` 对齐，`traceKey[0]: PENDING:img-004.png ↔ 24468661981` |
+| 建议11（P2-5） | 审计清单与 skill 增"取证纪律"：`机审通过`/`用户确认` 必须带 `call_id`/原话；`getImageList` 不传 `fields` | — |
+| 建议12（P2-12） | `manifest.json` 增 `pendingGates`；`manifest.py gate` 收口；未闭环不得置 `finalStatus=success`（只能 `success-paused`） | 本 run G4=open，`final success` 被拒（exit=1），`success-paused` 放行 |
+| 6.5 #10（bind 双向） | 方案 §三路由表 / §八铁律4 / skill §8 更正：**包→计划替换、计划→包累加**，解绑只能 update 改 audience | 原"替换式、不是追加"表述已改 |
+| 6.5 #11（清单 fields） | 路由表 ⑧-2 查图行补"别传 `fields`" | — |

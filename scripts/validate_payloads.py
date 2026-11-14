@@ -465,6 +465,69 @@ def check_plan_payload_consistency(
                 report.fail(label, f"⑤ 是 {pv!r} 而 ⑥ 是 {yv!r} —— 追溯键不一致")
 
 
+VOLUME_RE = re.compile(r"(\d+(?:\.\d+)?)\s*mL")
+
+
+def check_required_fields_consistency(run_dir: Path, report: Report) -> None:
+    """建议9 / P2-2：上游产物"自述 vs 事实"对账。
+
+    只查最新一版 01-product/required-fields*.json：
+      1. `userConfirmations.unchangedFields` 里列出的字段，若该字段自身声明"待核实/内容错误/有 usageRule"，
+         说明它其实被更正过，不该再出现在"未变更"清单里；
+      2. `complianceNotesRetained` 里出现的规格数字（如 60mL），必须与 `fields.spec.value` 一致
+         （否则就是 spec 与备注互相矛盾）。
+    """
+    path = pick_latest(run_dir / "01-product", "required-fields.json")
+    if path is None:
+        report.warn("01-product", "找不到 required-fields*.json，跳过自述/事实对账")
+        return
+    try:
+        data = load_json(path)
+    except (json.JSONDecodeError, OSError) as exc:
+        report.fail("01-product", f"{path.name} 读取失败：{exc}")
+        return
+    fields = data.get("fields") or {}
+    uc = data.get("userConfirmations") or {}
+    problems: list[str] = []
+
+    # 1a) 从"变更日志"里读出真正被改过的字段（自述里的 changesFrom*Reason.changes）
+    changed: set[str] = set()
+    for key, val in data.items():
+        if not key.startswith("changesFrom"):
+            continue
+        for item in (val or {}).get("changes", []) if isinstance(val, dict) else []:
+            changed.update(re.findall(r"fields\.([A-Za-z_]\w*)", str(item)))
+
+    # 1b) 另有硬信号：source 明确写了"内容错误/需实物核实"
+    for name, f in fields.items():
+        if isinstance(f, dict) and "内容错误" in str(f.get("source") or ""):
+            changed.add(name)
+
+    for name in uc.get("unchangedFields") or []:
+        if name in changed:
+            problems.append(
+                f"unchangedFields 含 {name!r}，但变更日志/字段 source 显示它被更正过 "
+                "—— 它不该出现在『未变更』清单里（自述 vs 事实矛盾）"
+            )
+
+    spec_value = str((fields.get("spec") or {}).get("value") or "")
+    for note in uc.get("complianceNotesRetained") or []:
+        for vol in VOLUME_RE.findall(str(note)):
+            if vol not in spec_value:
+                problems.append(
+                    f"complianceNotesRetained 写了 {vol}mL，但 fields.spec.value={spec_value!r} 与它不一致"
+                )
+
+    if problems:
+        for p_msg in problems:
+            report.fail(f"01-product/{path.name}", p_msg)
+    else:
+        report.ok(
+            f"01-product/{path.name}",
+            "自述与事实一致（unchangedFields 无被更正字段、备注规格与 spec 一致）",
+        )
+
+
 def check_copy_forbidden(run_dir: Path, report: Report) -> None:
     path = run_dir / "03-copy" / "copy.json"
     if not path.is_file():
@@ -518,6 +581,7 @@ def main(argv: list[str] | None = None) -> int:
         payloads.get("addCampaignShopping.json"), run_dir, report, args.image_map
     )
     check_copy_forbidden(run_dir, report)
+    check_required_fields_consistency(run_dir, report)
 
     if args.json:
         print(json.dumps({"runDir": str(run_dir), **report.dump()}, ensure_ascii=False, indent=2))

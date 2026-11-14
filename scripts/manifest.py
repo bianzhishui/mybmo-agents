@@ -8,6 +8,8 @@
     next                       打印"下一步该谁"（第一个非 done 的阶段）
     object <key> <value>       写 objects 下的键（campaignShoppingId 等）
     final <status>             写 finalStatus（success / success-paused / failed / abandoned），可带 --reason
+                               有未闭环 pendingGates 时拒绝置 success（建议12）
+    gate <id> <status>         改一个人工闸（open / closed），可带 --reason
     verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256
 
 状态枚举：pending / running / done / rejected / frozen
@@ -163,6 +165,12 @@ def verify(run_dir: Path, manifest: dict, record: bool) -> int:
                 f"{stage}: {path.name} sha256={digest} ≠ execution-plan 放行记录 {rec}"
             )
             print(f"[FAIL] {stage:12} sha256 不一致：现场 {digest[:16]}… ≠ 放行 {rec[:16]}…")
+    open_gates = [
+        gid for gid, g in (manifest.get("pendingGates") or {}).items()
+        if (g or {}).get("status", "open") != "closed"
+    ]
+    if open_gates:
+        warns.append(f"人工闸未闭环：{open_gates}（未闭环不得置 finalStatus=success）")
     for w in warns:
         print(f"[WARN] {w}")
     print(f"\n结论：{'FAIL' if fails else 'PASS'}（FAIL={len(fails)} WARN={len(warns)}）")
@@ -194,6 +202,11 @@ def main(argv: list[str] | None = None) -> int:
     p_final = sub.add_parser("final", help="写 finalStatus")
     p_final.add_argument("status", choices=sorted(FINAL_STATUSES))
     p_final.add_argument("--reason")
+
+    p_gate = sub.add_parser("gate", help="改人工闸状态（pendingGates）")
+    p_gate.add_argument("gate_id")
+    p_gate.add_argument("status", choices=["open", "closed"])
+    p_gate.add_argument("--reason")
 
     p_verify = sub.add_parser("verify", help="版本↔文件名绑定 + 将发送文件 sha256 对账")
     p_verify.add_argument("--record", action="store_true", help="把 06-payloads 执行版 sha256 写回 manifest")
@@ -235,7 +248,29 @@ def main(argv: list[str] | None = None) -> int:
             save(run_dir, manifest)
         return rc
 
+    if args.cmd == "gate":
+        gates = manifest.setdefault("pendingGates", {})
+        entry = gates.setdefault(args.gate_id, {"desc": "", "status": "open"})
+        entry["status"] = args.status
+        if args.reason:
+            entry["reason"] = args.reason
+        save(run_dir, manifest)
+        print(f"gate {args.gate_id} -> {args.status}")
+        return 0
+
     if args.cmd == "final":
+        open_gates = [
+            gid for gid, g in (manifest.get("pendingGates") or {}).items()
+            if (g or {}).get("status", "open") != "closed"
+        ]
+        if args.status == "success" and open_gates:
+            print(
+                f"拒绝置 success：仍有未闭环人工闸 {open_gates}。"
+                f"先 scripts/manifest.py gate <id> closed --reason …，"
+                f"或置 success-paused（保持暂停交付）。",
+                file=sys.stderr,
+            )
+            return 1
         manifest["finalStatus"] = args.status
         if args.reason:
             manifest.setdefault("finalStatusNote", {})["reason"] = args.reason

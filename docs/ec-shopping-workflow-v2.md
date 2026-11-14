@@ -62,11 +62,11 @@ API 参数
 |---|---|---|---|---|---|
 | ⑧-2 图片入库 | `ImageManageService.uploadImage` | 写 | ✅ 写实测 | **成员8** | `content` 纯 base64 不带 `data:` 前缀；`addImage=true` 才产 `imageId`；≤20 张/次、≤10MB；`productLine`/`needMola` 不能传 |
 | ⑧-3 建词包 | `KeyWordShoppingService.addKeywordPackages` | 写 | ✅ 写实测 | **成员8** | 字段名是 `keywordPackageTypes`；新建 `{packageName, keywordTypes:[{keyword,id:0}]}` |
-| ⑧-5 绑词包 | `KeyWordShoppingService.bindPlanKeywordPackages` | 写 | ✅ 写实测 | **成员8** | **替换式绑定**，不是追加 |
+| ⑧-5 绑词包 | `KeyWordShoppingService.bindPlanKeywordPackages` | 写 | ✅ 写实测 | **成员8** | **双向语义**：包→计划是**替换**（绑 P2 后 P1 的包被清空）、计划→包是**累加**（同计划绑 A、B → `fcKeywordWtpids="A,B"`）；解绑只能 `updateCampaignShopping` 改 `audience` |
 | ⑧-4 建计划 | `CampaignShoppingService.addCampaignShopping` | 写 | ⚠️ **未实测** | **成员8** | 9 个必填字段，必须先小范围试 |
 | ⑧-1/⑧-6 读计划 | `CampaignShoppingService.getCampaignShopping` | 读 | ✅ 读实测 | 成员8 | 扁平字段名，51 字段表必传 |
 | ⑧-6 开量 | `CampaignShoppingService.updateCampaignShopping` | 写 | ✅ 写实测 | **成员8** | **`material` 整体替换**，必须读-改-写 |
-| ⑧-2 查图 | `ImageManageService.getImageList` | 读 | ✅ 读实测 | 成员8 | 改名后查询有最终一致延迟 |
+| ⑧-2 查图 | `ImageManageService.getImageList` | 读 | ✅ 读实测 | 成员8 | 改名后查询有最终一致延迟；**请求里别传 `fields`**（会过滤掉 `auditStatus`/`reason`）——不传才默认返回 |
 
 ### 单一写入口（本方案的核心约束）
 
@@ -190,6 +190,7 @@ API 参数
   - 参数名用**驼峰**（如 `campaignShoppingName`）
   - `productId` 未提供就写"待核实"，**禁止编造**
   - 明确标注 `addCampaignShopping` 为"未实测，需 pause 建单验证"
+- 素材溯源用 `getImageList` 时**不要传 `fields`**（传了会过滤掉 `auditStatus`/`reason`，就"复现不了机审通过"）；断言必须带 `call_id`
 
 ### 成员7 · 审计官（六层核对 + 可逆性）
 不生成内容，逐层核对（清单见[第七节](#七审计清单v2)）。
@@ -334,6 +335,8 @@ API 参数
 3. **⑤↔⑥ 追溯键校验（P2-1 / 建议10）**：读 `05-plan/plan-draft*.json` 最新版，把 ⑤ 的 `PENDING:<file>`
    经 image-map 解析出 imageId，再与 ⑥ 的取值对齐；⑤ 的编号在 image-map 里查不到＝链断，直接 FAIL
    （不再依赖 `_notes` 里的"偏离声明"兜底）
+4. **上游自述对账（建议9）**：`01-product/required-fields*.json` 最新版里，`unchangedFields` 不得包含被更正字段，
+   `complianceNotesRetained` 的规格数字必须与 `fields.spec` 一致；不符即 FAIL
 
 把"人检查"变成"机器检查"，是这层规范最大的价值。
 
@@ -461,6 +464,7 @@ API 参数
 - [ ] 所有 `pictures` 的 `imageId` 均由 `uploadImage(addImage=true)` 真实返回，非编造
 - [ ] 文案无违禁词、无绝对化用语、无虚假疗效承诺
 - [ ] **内容红线（我方审计口径，非平台拒审）**：无 AI 水印、无使用前后对比、无绝对化/保证性用语；`assets_pack.py` 有逐张自查声明
+- [ ] **取证纪律（建议11）**：凡"机审通过""用户确认"这类断言，必须给可复现的 `call_id` 或用户原话，否则视为不合格
 - [ ] 视频若用：≥6 秒、≤500MB、有封面
 
 ### 第 3 层 · 计划与定向
@@ -501,7 +505,9 @@ API 参数
 >    三个族的接口，禁止调用搜索线写接口。
 > 3. **单一写入口铁律**：**所有 `mutating: true` 的能力只由成员8 执行**。
 >    成员1-7 只产出"待执行参数"，不得调任何写接口——包括 `uploadImage`。
-> 4. **词包铁律**：关键词先成包再绑计划，绑定是**替换式**（`bindPlanKeywordPackages`），不是追加。
+> 4. **词包铁律**：关键词先成包再绑计划。`bindPlanKeywordPackages` 是**双向语义**——
+>    **包→计划是替换**（绑 P2 后 P1 的包被清空），**计划→包是累加**（同计划绑 A、B → `"A,B"`）；
+>    没有"解绑"入口，解绑只能 `updateCampaignShopping` 改 `audience`。
 > 5. **素材铁律**：`material` 是整体替换，读-改-写必须读全；`brand` 为空则素材全空；
 >    `userPortrait`（120×120）必带；`pictures` 尺寸走精确白名单、≤18 张；`audience` 只有 `interests` 键级必带，
 >    出 payload 以 `templates/campaign-baseline.json` 为骨架替换取值。

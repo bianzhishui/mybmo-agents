@@ -149,6 +149,8 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 ## 6. 审计与打回
 
 - 审计结论只有两种：`通过` / `打回给成员X，具体问题：…`
+- **取证纪律**：凡"机审通过""用户确认"这类断言，必须给可复现的 `call_id` / 用户原话；
+  `getImageList` 取证**不要传 `fields`**（传了会过滤掉 `auditStatus`/`reason`）。
 - 打回由团长用 `send_message` 发回同一个子 agent（本地子 agent 可续），要求出 `v2` 文件。
 - 有任何一层不过就是打回，不存在"基本通过"。
 
@@ -183,7 +185,7 @@ PvSearchFunction.getPvSearch  # 精确/短语流量
 1. 层级：电商线只有「计划」一层；"单元" = 计划内定向组（1:1）。
 2. 接口：只用 `KeyWordShoppingService` / `ImageManageService` / `CampaignShoppingService`。
 3. 读写分离：只读端点人人可用，**写能力只在成员8 的工具列表里**（结构保证）。
-4. 词包：先成包再绑计划，绑定是**替换式**。
+4. 词包：先成包再绑计划。`bindPlanKeywordPackages` **双向**——包→计划替换、计划→包累加；解绑只能 update 改 audience。
 5. 素材：`material` 整体替换，读-改-写必须读全；`brand` 为空则素材全空。`userPortrait`（120×120）必带；
    `pictures` 尺寸走**精确宽高白名单**（370×245/1140×640/750×1000）、≤18 张；`audience` 只有 `interests` 键级必带；
    ⑥ 出 payload 以 `templates/campaign-baseline.json` 为骨架替换取值，不从零拼。
