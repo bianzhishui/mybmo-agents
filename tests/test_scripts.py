@@ -450,6 +450,22 @@ class TestAnchorShard(RunCase):
         self.assertEqual(r2.returncode, 0, r2.stdout)
         self.assertIn("三方一致", r2.stdout)
 
+    def test_unsafe_run_id_does_not_escape_anchor_dir(self):
+        m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
+        m["runId"] = "../../evil"
+        (self.run_dir / "manifest.json").write_text(json.dumps(m), encoding="utf-8")
+        anchor_dir = self.tmp / "anchor"
+        env = {"ECWF_ANCHOR_DIR": str(anchor_dir)}
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "anchor", env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        files = list(anchor_dir.glob("*.log"))
+        self.assertEqual(len(files), 1, r.stdout)
+        self.assertNotIn("..", files[0].name)
+        # 目录外不能出现 evil.log
+        self.assertFalse((self.tmp / "evil.log").exists())
+        r2 = run("manifest.py", "--run-dir", str(self.run_dir), "verify", "--strict-anchor", env=env)
+        self.assertEqual(r2.returncode, 0, r2.stdout)
+
     def test_two_runs_parallel_shards(self):
         import shutil as _sh
         a = self.tmp / "a"; b = self.tmp / "b"

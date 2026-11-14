@@ -11,7 +11,7 @@
                                有未闭环 pendingGates 时拒绝置 success（建议12）
     gate <id> <status>         改一个人工闸（open / closed），可带 --reason
     retry <stage>              记一次重试；超过 3 次拒绝（除非 --force）
-    anchor [--approval P] [--log P]   审计锚定：团长写 manifest.approvalSha256 + 追加 audit/approvals.log（带 prev 链）
+    anchor [--approval P] [--log P]   审计锚定：写 manifest.approvalSha256 + 追加 audit/approvals/<runId>.log（prev 链）
     verify [--record]          校验"版本 ↔ 文件名"绑定，并打印/校验将发送文件的 sha256
                                （--strict-anchor 时额外校验三方锚定与日志链）
     lint-files                 校验 run 目录文件名是否落在协议封闭清单内（§1.1）
@@ -289,11 +289,22 @@ def lint_files(run_dir: Path) -> int:
     return 1 if problems else 0
 
 
+SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
+
+
+def safe_run_id(run_dir: Path, manifest: dict) -> str:
+    rid = str(manifest.get("runId") or run_dir.name)
+    if SAFE_RUN_ID_RE.match(rid) and ".." not in rid:
+        return rid
+    # 防路径穿越：非法 runId 一律回退到目录名（同样清洗）
+    fallback = re.sub(r"[^A-Za-z0-9._-]", "_", run_dir.name).lstrip(".") or "run"
+    return fallback
+
+
 def anchor_log_path(run_dir: Path, manifest: dict, override: str | None) -> Path:
     if override:
         return Path(override)
-    rid = manifest.get("runId") or run_dir.name
-    return ANCHOR_DIR / f"{rid}.log"
+    return ANCHOR_DIR / f"{safe_run_id(run_dir, manifest)}.log"
 
 
 def resolve_verify_log(run_dir: Path, manifest: dict, override: str | None) -> tuple[Path, bool]:
@@ -372,7 +383,7 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path |
     log_path.parent.mkdir(parents=True, exist_ok=True)
     # 幂等：若该 run 最后一次记录已是同一组 digest，就不重复追加
     existing = [r for r in _read_log(log_path)
-                if r.get("runId") == (manifest.get("runId") or run_dir.name)]
+                if r.get("runId") == safe_run_id(run_dir, manifest)]
     if existing:
         last = existing[-1]
         if last.get("approvalSha256") == approval_sha and last.get("payloadSha256") == payload_sha:
@@ -387,7 +398,7 @@ def do_anchor(run_dir: Path, manifest: dict, approval_rel: str, log_path: Path |
             prev_raw = lines[-1]
     row = {
         "ts": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "runId": manifest.get("runId") or run_dir.name,
+        "runId": safe_run_id(run_dir, manifest),
         "payload": payload_rel,
         "payloadSha256": payload_sha,
         "approvalSha256": approval_sha,
@@ -443,7 +454,7 @@ def verify_anchor(run_dir: Path, manifest: dict, log_path: Path, strict: bool,
         print(f"[FAIL] 锚定：payload 与 approval 声明的 sha 不符")
         return
     # 日志三方核对
-    rows = [r for r in _read_log(log_path) if r.get("runId") == (manifest.get("runId") or run_dir.name)]
+    rows = [r for r in _read_log(log_path) if r.get("runId") == safe_run_id(run_dir, manifest)]
     if not rows:
         msg = f"缺锚定日志：{log_path} 无该 run 记录"
         (fails if strict else warns).append(msg)
