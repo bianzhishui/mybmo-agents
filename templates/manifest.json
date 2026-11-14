@@ -36,10 +36,29 @@
   },
   "finalStatus": "running",
   "pendingGates": {
+    "G1": {
+      "desc": "预检用最新 image-map（脚本已内置，无需再手工跑法 B）",
+      "status": "closed"
+    },
+    "G2": {
+      "desc": "⑧-2 上传后两处回填真实 imageId：06-payloads 的 pictures[0] 与 04-assets/image-map.vN（backfill_image_ids.py）",
+      "status": "open"
+    },
+    "G3": {
+      "desc": "⑧-5 绑包后回读 fcKeywordWtpids 含新 packageId；绑前绑后各读一次旧计划确认未被替换",
+      "status": "open"
+    },
     "G4": {
-      "desc": "开量前用户书面确认：文案/图内表述与实物一致（如『不伤玉器』）、赠品『送』标属实、budget/ocpcBid 终确认",
-      "status": "open",
-      "closedBy": null
+      "desc": "开量前用户书面确认：表述与实物一致、赠品属实、budget/ocpcBid 终确认",
+      "status": "open"
+    },
+    "G5": {
+      "desc": "⑧-6 回读确认 region 仍为 9999999（或等价不限）；被改写则改用地域码重建",
+      "status": "open"
+    },
+    "G6": {
+      "desc": "before-snapshot.json 先落盘（含本次要写入的 material/audience），after-snapshot 用 snapshot_diff 比对",
+      "status": "open"
     }
   },
   "_statusEnum": [

@@ -204,7 +204,7 @@ API 参数
 
 | # | 动作 | 能力 | 成功判据 |
 |---|---|---|---|
-| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 | 授权正常、字段无缺 |
+| 1 | **预检** | 授权有效性检查 + `getCampaignShopping` 读全 51 字段 + **`bash scripts/preflight.sh --run <runId>` 一把跑完 4 项只读校验** | 授权正常、字段无缺、预检 PASS |
 | 2 | **图片入库** | `uploadImage`（`addImage=true`，members4 提供的 base64） | 返回 `imageId`，回填映射表 |
 | 3 | **建词包** | `addKeywordPackages`（成员2 的 `keywordPackageTypes`） | 返回 `packageId`，`getKeywordPackages` 回读存在 |
 | 4 | **建计划** | `addCampaignShopping`（`pause=true`，`material` 引用步骤2 的 `imageId`） | 返回 `campaignShoppingId`，`succ=oprs` |
@@ -217,6 +217,7 @@ API 参数
 - **顺序不可乱**：`imageId`（步骤2）必须先于建计划（步骤4）；`packageId`（步骤3）必须先于绑定（步骤5）
 - `addCampaignShopping` 未实测，**首次只建 1 个计划、1 个词包、1 张图**（步骤2-5 各一次），验证通过再批量
 - **禁止声称"已实施"除非步骤6 回读校验成功**；任何一步失败立即停手并报告 `call_id`
+- **⑧-1 的机检一律用 `bash scripts/preflight.sh --run <runId>`**（内部串 `validate_payloads` + `manifest verify` + `manifest lint-files` + `snapshot_diff`，任一 FAIL 即非 0 退出）
 - **发写调用前先跑 `scripts/manifest.py verify`**：校验 `version == 文件名 .vN`，并打印"将发送文件"的 sha256，
   与审计放行记录（`execution-plan.json`）一致才发；不一致 = 拿旧 payload 烧最后一次重试额度
 - **重试预算硬上限 3 次**：第 1 次失败就要把下一轮所需的**全部改动一次性批量下发**（图 + payload + 审计要点），
