@@ -387,8 +387,8 @@ API 参数
 | **未知结果对账** | 超时/5xx 不重发，先按 capability 给出的查询路径核对后台 | `reconcile.py` |
 | **重试预算** | 每阶段重试硬上限 3 次，超限拒绝 | `manifest.py retry` |
 | **人工闸证据** | `gate … closed` 必须带 `--evidence`（用户原话/call_id） | `manifest.py gate` |
-| **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json`；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
-| **系统文件** | `.DS_Store` 等点文件不参与文件名校验 | `manifest.py lint-files` |
+| **收尾硬前置** | `final success` 需 gates 全 closed + `approval.json` + `user-confirmation.json` + **已锚定（`manifest.approvalSha256`）**；`set … done` 必须带/已有产出文件 | `manifest.py final/set` |
+| **系统文件** | `.DS_Store` 等点文件不参与文件名校验；**未知子目录**（如 `99-junk/`）直接 FAIL | `manifest.py lint-files` |
 
 `preflight.sh` **默认**就包含 `gate_check --for execute`（审计放行件缺失即 FAIL）；只在做半成品自检时用 `--skip-gates`。
 ⑧ 侧建议加 `--strict-anchor`：锚定缺失或日志链断裂即 FAIL。

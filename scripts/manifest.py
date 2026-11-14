@@ -283,6 +283,11 @@ def lint_files(run_dir: Path) -> int:
             problems.append(
                 f"{stage}/{name}: 不在协议封闭清单内（允许 {patterns} 或其 .vN 变体、下划线辅助文件）"
             )
+    # 未知子目录也算协议外（否则 99-junk/ 这类目录会被完全忽略）
+    for d in sorted(run_dir.iterdir()):
+        if d.is_dir() and not d.name.startswith(".") and d.name not in ALLOWED_FILES:
+            problems.append(f"{d.name}/: 不在协议目录清单内（允许 {list(ALLOWED_FILES)}）")
+
     # 根目录只允许 manifest.json
     for f in sorted(run_dir.iterdir()):
         if f.is_file() and f.name != "manifest.json" and not f.name.startswith("."):
@@ -641,6 +646,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             if not (run_dir / "08-execution" / "user-confirmation.json").is_file():
                 print("拒绝置 success：缺 08-execution/user-confirmation.json（用户书面确认开量）", file=sys.stderr)
+                return 1
+            if not manifest.get("approvalSha256"):
+                print("拒绝置 success：未锚定（缺 manifest.approvalSha256，先跑 manifest.py anchor）", file=sys.stderr)
                 return 1
         manifest["finalStatus"] = args.status
         if args.reason:

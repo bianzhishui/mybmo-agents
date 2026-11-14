@@ -314,8 +314,10 @@ class TestGatesAndGuards(RunCase):
 
 class TestHardening(RunCase):
     def _closed_gate(self):
-        self.write_manifest({"08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
-                            gates={"G4": {"status": "closed", "evidence": "x"}})
+        self.write_manifest(
+            {"07-audit": {"status": "done", "file": "07-audit/audit-report.md"},
+             "08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
+            gates={"G4": {"status": "closed", "evidence": "x"}})
 
     def test_final_success_needs_approval_and_confirmation(self):
         self._closed_gate()
@@ -325,6 +327,10 @@ class TestHardening(RunCase):
         self.assertIn("user-confirmation", r.stderr)
         (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
             {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
+        # 还需要锚定
+        r_anchor = run("manifest.py", "--run-dir", str(self.run_dir), "anchor",
+                       env={"ECWF_ANCHOR_DIR": str(self.tmp / "anchor")})
+        self.assertEqual(r_anchor.returncode, 0, r_anchor.stderr)
         r2 = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
         self.assertEqual(r2.returncode, 0, r2.stderr)
 
@@ -476,6 +482,24 @@ class TestAnchorShard(RunCase):
                 "--log", str(self.tmp / "l.log"))
         self.assertEqual(r.returncode, 1)
         self.assertIn("路径越界", r.stdout)
+
+    def test_final_success_requires_anchor(self):
+        self.write_manifest(
+            {"07-audit": {"status": "done", "file": "07-audit/audit-report.md"},
+             "08-execution": {"status": "done", "file": "08-execution/before-snapshot.json"}},
+            gates={})
+        (self.run_dir / "08-execution" / "user-confirmation.json").write_text(json.dumps(
+            {"confirmedBy": "u", "quote": "同意"}), encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "final", "success")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("未锚定", r.stderr)
+
+    def test_lint_rejects_unknown_dir(self):
+        (self.run_dir / "99-junk").mkdir()
+        (self.run_dir / "99-junk" / "x.json").write_text("{}", encoding="utf-8")
+        r = run("manifest.py", "--run-dir", str(self.run_dir), "lint-files")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("不在协议目录清单内", r.stdout)
 
     def test_unsafe_run_id_does_not_escape_anchor_dir(self):
         m = json.loads((self.run_dir / "manifest.json").read_text(encoding="utf-8"))
