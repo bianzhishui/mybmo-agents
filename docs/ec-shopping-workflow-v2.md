@@ -94,6 +94,10 @@ API 参数
 只编排、只汇总，不代写。调度顺序：①商品分析 → ②词包 → ③文案 → ④素材准备 → ⑤计划架构
 → ⑥API 参数 → ⑦审计 → ⑧实施（成员8 唯一写入口）。审计打回时按"打回给谁"转派。
 
+**等待与重试纪律（P1-6 熔断）**：① 重试预算**硬上限 3 次**，第 3 次仍失败就转人工后台建计划；
+② 第 1 次失败时**一次性批量下发**下一轮所需的全部改动（图 + payload + 审计要点），禁止逐个往返——
+上一轮 50 次 `wait_agent` / 42 分钟里大量是串行空转。
+
 ### 成员1 · 商品与卖点分析师
 - **输入**：商品图片 + 卖点素材
 - **输出**：商品理解（3 句）+ 卖点清单（3-5 条，每条 ≤15 字）+ **电商必填项核实表**
@@ -117,6 +121,14 @@ API 参数
   - **描述 0-6 条，每条 9-80 字符**（商品推广**必须**传描述）
   - **图片生成提示词**（连接器无文生图能力，产出提示词交外部出图；出好的图交成员4 整理成 base64 素材包，最终由成员8 上传）
 - **硬约束**：不得含"最/第一/根治/百分百"等违禁或绝对化表述；不得承诺疗效（医药/兽药类商品尤其）
+- **图片尺寸口径（2026-11-14 定稿）**：`material.pictures` 是**精确宽高白名单、方向固定**——
+  商品推广只有 `370×245 / 1140×640 / 750×1000`，自定义直播推广只有 `1140×640`。
+  **不是"宽高比"也不是"最小尺寸"**：375×248、960×540（同为 16:9）、1000×750、640×1140 实测全被 `901217` 拒。
+  提示词里要直接写死目标宽高，不要写"3:4 / 最小边 ≥750"这类可被推导成非法尺寸的说法。
+  张数上限 **18**（19 张 → `901217`「创意设置图片数量超过上限」）。
+- **内容红线**（AI 生成水印 / 使用前后对比 / 绝对化用语如"不伤表面""污渍自动溶解"）是
+  **我方审计口径，不是平台拒审条件**——平台不会因此拒单（镜像：img-003 带水印+前后对比仍挂在在投计划里、`astat=0`、计划 `status=2` 非 21），
+  由审计官裁定、由 `scripts/assets_pack.py` 要求逐张自查声明。
 
 ### 成员4 · 素材准备员【v2 新增，不调接口】
 - **输入**：成员3 的图片文件
@@ -129,6 +141,10 @@ API 参数
   - base64 必须逐张校验可解码、体积合规（单张 + 整批 ≤10MB）
   - 同名/同图需提示：同图 MD5 去重会返回同一 `imageId`，映射表里要标注"可能复用已有图"
   - 映射表是成员6 写 `material.pictures[]` 的唯一依据，`imageId` 由成员8 上传后回填
+  - **上传成功 ≠ 尺寸合规 ≠ 内容合规**（三关各踩过一次真实事故：img-001 内容 / img-002 尺寸 / img-003 内容）。
+    `scripts/assets_pack.py` 现已把四关机器化：① 尺寸精确白名单（370×245/1140×640/750×1000，方向固定）
+    ② 张数 ≤18 ③ 内容红线逐张自查声明（我方口径，平台不拦）④ md5 与 image-map 一致。
+    任一不过**直接不发上传调用**，并给出可读错误。
 
 ### 成员5 · 计划与定向架构师（原"计划与单元架构师"改造）
 - **输入**：成员1 必填项 + 成员2 词包 + 成员3 文案 + 成员4 素材映射表（`imageId` 由成员8 上传后回填，此阶段写占位符）
@@ -145,16 +161,26 @@ API 参数
 ├─ ocpcBid      ([0.2, 99999]，两位小数)
 ├─ schedule     (星期 + 起止小时)
 ├─ audience     (定向组：region / keywords / 词包ID / sex / age / interests …)
-└─ material     (brand + title[] + description[] + pictures[imageId])
+└─ material     (brand + userPortrait + title[] + description[] + pictures[imageId])
 ```
 
 - **硬约束**：
   1. 一个计划对应**一个定向组**，同一计划下素材与词包语义必须一致
-  2. `brand` **必填**——不带 `brand`，接口返回的 `material` 整个为空
+  2. `brand` **必填**——不带 `brand`，接口返回的 `material` 整个为空；
+     `material.userPortrait`（品牌头像 120×120）也**必带**（缺 → `901217`「创意设置品牌头像错误」），
+     直接复用图库/既有计划里已过审的头像 imageId
+  2b. `audience` 键级必带**只有 `interests`**（缺 → `901216`「兴趣错误」；空对象 `{}` → `901214`「定向信息为空」）；
+     其余键可省、服务端补默认值。写 12 键、读回 13 键（+`excludeTrans`）、绑包后 14 键属正常，**对账以读回为准**
+  2c. `pictures[].imageId` 占位符统一 `PENDING:<img-00N>.<ext>`（如 `PENDING:img-001.png`），
+     ⑤ 草案与 ⑥ payload **必须引用同一个追溯键**
   3. `transType` 必须与 `eshopType` / `targetType` 配套，不能混搭
   4. **只产出结构草案，不调任何接口**（执行权在成员8）
 
 ### 成员6 · API 参数工程师（三接口分列输出）
+- **出 payload 以基线为骨架**：以 `templates/campaign-baseline.json`（同账户真实计划的读回值：
+  `audience` 全 14 键 + `material` 全要素 brand/userPortrait/title/description/pictures）为骨架，
+  **只替换取值，不从 schema 从零拼**。三个易错点（userPortrait 必带、interests 必带、picture 尺寸/张数）
+  在基线的 `_easyErrors` 里逐条写明。从零拼 = 每次都在重复踩 P0-1/P0-3。
 - **输出**三份可直接执行的 JSON，**每个字段标注来源或"待核实"**：
   1. `addKeywordPackages` 请求体（词包）
   2. `uploadImage` 请求体（图片）
@@ -179,6 +205,7 @@ API 参数
 | 2 | **图片入库** | `uploadImage`（`addImage=true`，members4 提供的 base64） | 返回 `imageId`，回填映射表 |
 | 3 | **建词包** | `addKeywordPackages`（成员2 的 `keywordPackageTypes`） | 返回 `packageId`，`getKeywordPackages` 回读存在 |
 | 4 | **建计划** | `addCampaignShopping`（`pause=true`，`material` 引用步骤2 的 `imageId`） | 返回 `campaignShoppingId`，`succ=oprs` |
+| 4b | **立即补暂停（固定收尾，不是保险）** | `updateCampaignShopping` 最小请求体 `{campaignShoppingTypes:[{campaignShoppingId, pause:true}]}` | 回读 `pause=true`。**`addCampaignShopping` 不认 `pause`**：回显 `true`、落库 `false/status=20`，且与绑包无关；不补 = "以为暂停、其实已进审核"。最小请求体**不要全量读-改-写**（带 `material` 必须同时带 plan 级 `ideaType`，否则 `901202`） |
 | 5 | **绑词包** | `bindPlanKeywordPackages`（步骤3 的 `packageId` → 步骤4 的计划） | 回读 `audience.fcKeywordWtpids` 含该包 |
 | 6 | **回读 → 开量** | `getCampaignShopping` 逐字段比对 → `updateCampaignShopping` 置 `pause=false` | `material`/`audience` 与设计一致，状态 `pause=false` |
 
@@ -187,6 +214,10 @@ API 参数
 - **顺序不可乱**：`imageId`（步骤2）必须先于建计划（步骤4）；`packageId`（步骤3）必须先于绑定（步骤5）
 - `addCampaignShopping` 未实测，**首次只建 1 个计划、1 个词包、1 张图**（步骤2-5 各一次），验证通过再批量
 - **禁止声称"已实施"除非步骤6 回读校验成功**；任何一步失败立即停手并报告 `call_id`
+- **发写调用前先跑 `scripts/manifest.py verify`**：校验 `version == 文件名 .vN`，并打印"将发送文件"的 sha256，
+  与审计放行记录（`execution-plan.json`）一致才发；不一致 = 拿旧 payload 烧最后一次重试额度
+- **重试预算硬上限 3 次**：第 1 次失败就要把下一轮所需的**全部改动一次性批量下发**（图 + payload + 审计要点），
+  禁止逐个往返；第 3 次再失败彻底停手、转人工后台建计划
 - 所有产物写入 `08-execution/`（`preflight` / `execution-plan` / `before-snapshot` / `after-snapshot` / `calls.jsonl`），见[第五节](#五产物存储规范执行工作区)
 - 所有写调用的 `call_id` 必须记录成执行日志（`calls.jsonl`），作为回滚依据
 
@@ -261,7 +292,9 @@ API 参数
 ### 5.4 六条硬规则
 
 1. **单向写入**：成员 N 只能写 `0N-*/`，只读 `01..0N-1`；成员7 只读全部 + 写 `07-audit/`；成员8 只读 `01..07` + 写 `08-execution/`。
-2. **冻结不改写**：上游产物被下游消费后即冻结。要改必须落 `xxx.v2.json` 并更新 `manifest` 版本号，**禁止原地覆盖**——否则审计结论与最终 payload 对不上。
+2. **冻结不改写**：上游产物被下游消费后即冻结。要改必须落 `xxx.vN.json` 并更新 `manifest` 版本号，**禁止原地覆盖**——否则审计结论与最终 payload 对不上。
+   - **`version` 必须等于文件名里的 `.vN`**（无 `.vN` 视为 1）；`scripts/manifest.py verify` 会检出错位（真实案例：`04-assets.version=7` 而文件是 `image-map.v6.json`）。
+   - **已冻结的 payload 一律不原地重写**：改法＝出新文件 `xxx.v(N+1).json` + `_notes.revisionReason` 写明改因与 diff。
 3. **只强制留不可再生的**：`04-assets/*.png` 必留（丢了无法重建）；`.b64` 可删（可从 png 重编码）；线上对象只存 ID 不存副本。
 4. **`before-snapshot.json` 是回滚唯一基准**：`material` 整体替换 + `fengchaoDescription` 读不回，没有它就无法回滚。
 5. **`call_id` 必落盘**：`calls.jsonl` 每行 `{ts, runId, step, capability, call_id, state}`，用 `call_id` 回连 MCP `audit_log`。
@@ -342,6 +375,10 @@ API 参数
 
 ### 计划 JSON（核心）
 
+> **⑥ 出 payload 以基线为骨架替换取值，不从零拼。** 骨架文件：`templates/campaign-baseline.json`
+> （同账户一条真实计划的读回值，`audience` 全 14 键 + `material` 全要素，含 userPortrait / interests / picture 尺寸三处易错点注释）。
+> `fcKeywordWtpids` 不写占位符（schema pattern 只收数字），走 ⑧-5 绑包。
+
 ```json
 {
   "campaignShoppingTypes": [
@@ -360,23 +397,35 @@ API 参数
       "endTime": "9999-01-01",
       "schedule": [{"weekDay": 1, "startHour": 0, "endHour": 24}],
       "audience": {
+        "regionType": "0",
         "region": "9999999",
+        "sex": "0",
+        "age": "0",
+        "customAge": "0",
+        "interests": "0",
+        "crowd": "0",
+        "etradecrowds": "0",
+        "excludeCrowd": "",
+        "excludeTrans": "0",
         "keywords": "首饰发黄怎么洗,在家清洗珠宝",
-        "fcKeywordWtpids": "<成员2词包ID>",
         "keywordsExtend": "1",
         "intelligentWeight": "1"
       },
       "ideaType": 1,
       "material": {
         "brand": "玛卡商贸",
+        "userPortrait": {"imageId": 15505964077},
         "title": [{"text": "首饰发黄发乌别扔！一瓶在家洗得光亮如新"}],
         "description": [{"text": "深层去污不伤材质，金银玉石都能用"}],
-        "pictures": [{"imageId": 24365854069}]
+        "pictures": [{"imageId": "PENDING:img-001.png"}]
       }
     }
   ]
 }
 ```
+
+> 说明：`region` 只传地域码（`9999999`=不限）；传非法值（如中文「全国」）**不报错但被静默放大成不限**，
+> 写完必须回读 `region` 校验。`pictures[].imageId` 的占位符统一 `PENDING:<img-00N>.<ext>`。
 
 ---
 
@@ -399,14 +448,21 @@ API 参数
 - [ ] 标题 1-12 条，**每条 9-60 字符**
 - [ ] 描述 0-6 条，**每条 9-80 字符**，商品推广必须非空
 - [ ] `brand` 已填（不填 → `material` 整个空）
+- [ ] `material.userPortrait` 存在且为 120×120 品牌头像（缺 → `901217`「创意设置品牌头像错误」）
+- [ ] `pictures` 尺寸 ∈ **精确宽高白名单** `370×245 / 1140×640 / 750×1000`（方向固定；不接受按宽高比/最小尺寸推导）
+- [ ] `pictures` 张数 **≤18**（19 张 → `901217`「创意设置图片数量超过上限」）
 - [ ] 所有 `pictures` 的 `imageId` 均由 `uploadImage(addImage=true)` 真实返回，非编造
 - [ ] 文案无违禁词、无绝对化用语、无虚假疗效承诺
+- [ ] **内容红线（我方审计口径，非平台拒审）**：无 AI 水印、无使用前后对比、无绝对化/保证性用语；`assets_pack.py` 有逐张自查声明
 - [ ] 视频若用：≥6 秒、≤500MB、有封面
 
 ### 第 3 层 · 计划与定向
 
 - [ ] `budget` 在 [50, 9999999.99] 或为 0；`campaignType=4`（放量）时 budget 必须 > 0
 - [ ] `ocpcBid` 在 [0.2, 99999]、两位小数
+- [ ] `audience.interests` 存在（键级唯一必带；缺 → `901216`「兴趣错误」）；空对象 → `901214`
+- [ ] `audience.region` 是地域码或 `9999999`，且**写完回读校验**（非法值被静默放大为不限，`regionType=0/region=9999999` 才是"不限"）
+- [ ] `audience.excludeTrans` 允许 `"0"/"1"/"4"`（`"0"`=不限，服务端默认值）
 - [ ] 素材与词包语义一致（同一卖点方向）
 - [ ] 计划名可识别（含商品 + 策略 + 日期）
 
@@ -419,6 +475,9 @@ API 参数
 ### 第 5 层 · 可逆性（通用方案缺失，本方案必加）
 
 - [ ] 新建一律 `pause=true`，禁止直接开量
+- [ ] **建单/复制后立刻补暂停（必查项）**：`addCampaignShopping` 不认 `pause`，必须紧跟一次
+      `updateCampaignShopping {campaignShoppingId, pause:true}`（最小请求体）并回读 `pause=true`
+- [ ] `version == 文件名 .vN`（`scripts/manifest.py verify`）；将发送文件的 sha256 与审计放行记录一致
 - [ ] 若涉及 `updateCampaignShopping`：是否已**读全 51 字段**
       （漏读 `fengchaoTitle` 会被清空——2026-11-11 真实踩过的坑，见 `mybmo-mcp:docs/campaign-shopping.md`）
 - [ ] 是否有回读比对方案
@@ -436,11 +495,14 @@ API 参数
 > 3. **单一写入口铁律**：**所有 `mutating: true` 的能力只由成员8 执行**。
 >    成员1-7 只产出"待执行参数"，不得调任何写接口——包括 `uploadImage`。
 > 4. **词包铁律**：关键词先成包再绑计划，绑定是**替换式**（`bindPlanKeywordPackages`），不是追加。
-> 5. **素材铁律**：`material` 是整体替换，读-改-写必须读全；`brand` 为空则素材全空。
+> 5. **素材铁律**：`material` 是整体替换，读-改-写必须读全；`brand` 为空则素材全空；
+>    `userPortrait`（120×120）必带；`pictures` 尺寸走精确白名单、≤18 张；`audience` 只有 `interests` 键级必带，
+>    出 payload 以 `templates/campaign-baseline.json` 为骨架替换取值。
 > 6. **图片铁律**：图片必须先 `uploadImage(addImage=true)` 拿真实 `imageId`（由成员8 执行）；
 >    连接器无生成能力，不得假设"AI 出图直接进创意"。
 > 7. **顺序铁律**：`imageId` 先于建计划、`packageId` 先于绑包；顺序由成员8 一人保证。
-> 8. **实施铁律**：`addCampaignShopping` 未实测，首单必须 1 计划/1 词包/1 图、`pause=true`、回读通过再放量。
+> 8. **实施铁律**：`addCampaignShopping` 未实测，首单必须 1 计划/1 词包/1 图、`pause=true`、回读通过再放量；
+>    **建单/复制后立刻 `updateCampaignShopping` 补 `pause=true`**（建单不认 pause）；重试预算硬上限 3 次、首败即批量下发。
 > 9. **不编造铁律**：`productId`、`imageId`、落地页一律不得编造，缺就写"待核实"。
 > 10. **存储铁律**：所有产物落在 `.ecwf/runs/<runId>/` 的编号目录；上游产物冻结不改写；
 >     `call_id` 必须落 `calls.jsonl`；token/密钥不得入盘。

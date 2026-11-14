@@ -54,6 +54,13 @@
 - `.ecwf/.gitignore` = `*` + `!.gitignore`（产物不入库）
 - token / 密钥不入盘；`call_id` 必落 `calls.jsonl` 以便回连 `mybmo-mcp` 的 `audit_log`
 
+## 参数骨架与图片硬闸
+
+- `templates/campaign-baseline.json`：⑥ 出 payload 的**骨架**（同账户真实计划读回值：audience 全 14 键 +
+  material 全要素）。⑥ 只替换取值，**不从 schema 从零拼**。
+- `scripts/assets_pack.py`：图片**四关硬闸**——① 尺寸精确白名单（370×245/1140×640/750×1000，方向固定）
+  ② 张数 ≤18 ③ 内容红线自查声明（**我方审计口径，不是平台拒审**）④ md5 与 image-map 一致。不过就不发上传调用。
+
 ## 自动校验（§5.6 的落地实现）
 
 `scripts/validate_payloads.py`——成员8 第 1 步预检用的只读校验器：
@@ -69,8 +76,9 @@ python3 -m venv .venv && .venv/bin/pip install jsonschema   # 一次性
 
 1. **模板校验**：`06-payloads/{addKeywordPackages,uploadImage,addCampaignShopping}.json`
    逐份对 `schemas/*.schema.json`（draft-07）校验；
-2. **占位符 / 编造校验**：出现具体整数 `imageId` 但 `04-assets/image-map.json`
-   查不到 → 判定编造，直接打回成员6；`PENDING:<file>` 视为待回填；
+2. **占位符 / 编造校验**：出现具体整数 `imageId` 但 `04-assets/image-map.vN.json`
+   （默认取 `.vN` 最新一版，或 `--image-map` 指定）查不到 → 判定编造，直接打回成员6；
+   `material.userPortrait` 走"复用已过审品牌头像"分支、不当素材图溯源；`PENDING:<img-00N>.<ext>` 视为待回填；
 3. **业务规则子集**：`pause=true` 铁律、意图词 ≤2000、标题 9-60 字符、
    `material`/`brand` 非空、`03-copy` 禁投词自检结论。
 

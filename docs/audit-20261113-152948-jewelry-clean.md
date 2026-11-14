@@ -461,3 +461,24 @@ gantt
 > 所有测试计划（2388220136 / 2388220752 / 2388214314 / 2388280169 / 2388290999）均已删除；
 > 原计划 2376038055 未被改动。能力侧口径已同步进 `mybmo-mcp` 的 `descriptions.json`
 > 与 `docs/campaign-shopping.md`。
+
+---
+
+## 修订（2026-11-14）：遗留问题修复与能力口径落地
+
+> 本节只补口径与修复记录，**以上正文一律未改写**。能力侧口径以 `mybmo-mcp` 0.3.2（tag `v0.3.2` / `b986da0`）`descriptions.json` 为准。
+
+| 项 | 修复落点 | 结论 |
+|---|---|---|
+| 基线模板（建议1 / P0-1·P0-3） | 新增 `templates/campaign-baseline.json`（同账户计划 2387079078 真实读回，call `afd94c95cacd`），⑥ 以骨架替换取值 | userPortrait / interests 不再靠试错发现 |
+| 图片三关（建议2 / P0-2·P0-4） | `scripts/assets_pack.py` 四关硬闸：精确尺寸白名单 / ≤18 张 / 内容红线自查 / md5；**内容红线写明是我方审计口径、非平台拒审** | 960×540、19 张、960×540 均在上传前即拒 |
+| schema 必填（建议3 / P0-1·P0-3·P1-8） | `material.required` 加 `userPortrait`；`audience.required` 加 `interests`；`pictures` 标注精确尺寸枚举 + `maxItems:18`；`excludeTrans` enum 补 `"0"` | 仅本地机检生效（`mybmo-mcp` 的 capabilities.json 表达不了 required，未改） |
+| 版本强绑定（建议4 / P1-5） | `scripts/manifest.py verify`：`version == 文件名 .vN` + 将发送文件 sha256 与放行记录对账 | 检出 `04-assets.version=7` vs `image-map.v6.json` 错位、`07-audit.version=2` vs `audit-report.md` |
+| 机检脚本（建议5 / P1-6·P1-7·P1-9） | `validate_payloads.py` 取最新 image-map + userPortrait 分支 + 枚举；`backfill_image_ids.py` 同源取版 + 用 width/height/imageName/signature 精确回填 | 该 run 直接跑 `PASS=14 WARN=1 FAIL=0`，不再需要跑法 B |
+| 等待熔断（建议6 / P1-6 成本） | 团长 persona + `ecwf-protocol` §4：重试硬上限 3 次、首败批量下发 | — |
+| pause 固定收尾（建议7 / P0-5） | 方案 §成员8 / §七：建单后立刻 `update {campaignShoppingId, pause:true}`（最小请求体），列为审计必查项 | `addCampaignShopping` 不认 pause（与绑包无关） |
+| 孤儿 run（建议8 / P1-12） | `20261113-152452-jewelry-clean` 置 `finalStatus=abandoned`；`new_run.py` 增加同 slug 未完结检查 | — |
+| spec 自相矛盾（P1-3 / P2-2） | `01-product/required-fields.v4.json` 统一为"AI 错字、规格待核实、禁止写入创意" | 清掉 `unchangedFields.spec` 与 complianceNotes 里的 "60mL 需实物核对" |
+
+> 遗留（见交接表"仍未解决"）：`04-assets`/`07-audit` 的 version↔文件名错位属历史 run 数据，
+> 本次只做**检出**未改动冻结产物；后续 run 由 `manifest.py verify` 在 ⑧ 执行前阻断。
